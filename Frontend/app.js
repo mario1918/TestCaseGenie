@@ -287,7 +287,7 @@ function renderJiraIssues(issues) {
     row.setAttribute('data-issue', JSON.stringify(issue));
     
     row.innerHTML = `
-      <td><a href="https://jira.yourdomain.com/browse/${issue.key}" target="_blank" class="text-decoration-none fw-semibold">${issue.key || 'N/A'}</a></td>
+      <td><a href="https://arrowecommerce.atlassian.net/browse/${issue.key}" target="_blank" class="text-decoration-none fw-semibold">${issue.key || 'N/A'}</a></td>
       <td class="fw-medium">${truncate(issue.summary, 50)}</td>
       <td class="text-muted">${truncate(issue.description, 100)}</td>
       <td>${getIssueTypeBadge(issue.issue_type)}</td>
