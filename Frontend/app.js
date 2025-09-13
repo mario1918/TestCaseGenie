@@ -309,23 +309,29 @@ function renderJiraIssues(issues) {
 
 // Function to load and display issues
 async function loadJiraIssues() {
-  const loadingToast = bootstrap.Toast.getOrCreateInstance(document.getElementById('loadingToast'));
-  const toastBody = document.querySelector('#loadingToast .toast-body');
+  const loadingToastJira = bootstrap.Toast.getOrCreateInstance(document.getElementById('loadingToastJira'));
+  const toastBody = document.querySelector('#loadingToastJira .toast-body');
   
   try {
     // Show loading state
-    toastBody.textContent = 'Loading issues...';
-    loadingToast.show();
+    toastBody.textContent = 'Please wait while we load your Jira issues...';
+    loadingToastJira.show();
     
     const data = await fetchJiraIssues();
     if (data) {
       renderJiraIssues(data);
+      
+      // // Show success toast
+      // const successToastJira = bootstrap.Toast.getOrCreateInstance(document.getElementById('successToastJira'));
+      // const successToastBody = document.querySelector('#successToastJira .toast-body');
+      // successToastBody.textContent = `Successfully loaded ${data.issues.length} Jira issue(s)!`;
+      // successToastJira.show();
     }
   } catch (error) {
     console.error('Error:', error);
     showError('An error occurred while loading issues.');
   } finally {
-    loadingToast.hide();
+    loadingToastJira.hide();
   }
 }
 

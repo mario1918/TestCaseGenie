@@ -21,8 +21,14 @@
         <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
           <div class="card-header bg-gradient-primary text-white py-3">
             <div class="d-flex justify-content-between align-items-center">
-              <h1 class="h4 mb-0 fw-bold">TestCaseGenie</h1>
-              <span class="badge bg-white text-primary px-3 py-2">AI-Powered</span>
+              <h1 class="h4 mb-0 fw-bold d-flex align-items-center gap-2">
+                <i class="bi bi-magic text-white"></i>
+                <span>TestCaseGenie</span>
+              </h1>
+              <span class="badge bg-white text-primary px-3 py-2 d-flex align-items-center gap-1" id="aiBadge">
+                <i class="bi bi-stars text-warning"></i>
+                <span>AI-Powered</span>
+              </span>
             </div>
             <p class="mb-0 mt-2 opacity-85" style="font-size: 0.9rem;">
               Instantly convert <strong>User Stories</strong> into clear, reusable <strong>Test Cases</strong> with AI
@@ -252,6 +258,35 @@
       </div>
       <div class="toast-body">
         Successfully generated <span id="testCaseCount" class="fw-bold">0</span> test case(s)!
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container jira-->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="loadingToastJira" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <strong class="me-auto">Loading Jira Issues</strong>
+        <small>Just now</small>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+      <div class="toast-body">
+        Please wait while we load your Jira issues...
+      </div>
+    </div>
+    
+    <div id="successToastJira" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header bg-success text-white">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        <strong class="me-auto">Success</strong>
+        <small>Just now</small>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+      <div class="toast-body">
+        Successfully loaded <span id="jiraIssueCount" class="fw-bold">0</span> Jira issue(s)!
       </div>
     </div>
   </div>
