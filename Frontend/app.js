@@ -132,8 +132,60 @@ async function loadJiraSprints() {
 
 // Global variables for pagination
 let currentStartAt = 0;
-const MAX_RESULTS = 50;
+const MAX_RESULTS = 5;
 let totalResults = 0;
+
+// Helper function to format status badge
+function getStatusBadge(status) {
+  const statusColors = {
+    'to-do': '#BFC1C4',
+    'open': '#CECFD2',
+    'in progress': '#8FB8F6',
+    'closed': '#B3DF72',
+    'done': '#B3DF72'
+  };
+  
+  const normalizedStatus = status?.toLowerCase() || '';
+  const bgColor = statusColors[normalizedStatus] || '#E9ECEF';
+  
+  return `<span class="badge" style="background-color: ${bgColor}; color: #000;">${status || 'N/A'}</span>`;
+}
+
+// Helper function to format issue type badge
+function getIssueTypeBadge(issueType) {
+  const issueTypeColors = {
+    'story': '#82B536',
+    'bug': '#E2483D',
+    'new feature': '#82B536',
+    'sub-task': '#4688EC',
+    'subtask': '#4688EC',
+    'test': '#8FB8F6'
+  };
+  
+  const normalizedType = issueType?.toLowerCase() || '';
+  const bgColor = issueTypeColors[normalizedType] || '#E9ECEF';
+  
+  return `<span class="badge" style="background-color: ${bgColor}; color: #fff;">${issueType || 'N/A'}</span>`;
+}
+
+// Helper function to format priority badge
+function getPriorityBadge(priority) {
+  const priorityColors = {
+    'critical': '#E2483D',
+    'highest': '#E2483D',
+    'high': '#E2483D',
+    'major': '#F68909',
+    'medium': '#F68909',
+    'minor': '#4688EC',
+    'low': '#4688EC',
+    'lowest': '#6C757D'
+  };
+  
+  const normalizedPriority = priority?.toLowerCase() || '';
+  const bgColor = priorityColors[normalizedPriority] || '#6C757D'; // Default gray
+  
+  return `<span class="badge" style="background-color: ${bgColor}; color: #fff;">${priority || 'N/A'}</span>`;
+}
 
 // Show error message to the user
 function showError(message) {
@@ -229,34 +281,7 @@ function renderJiraIssues(issues) {
       return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
     };
 
-    // Format status badge
-    const getStatusBadge = (status) => {
-      const statusColors = {
-        'to-do': '#BFC1C4',
-        'open': '#CECFD2',
-        'in progress': '#8FB8F6',
-        'closed': '#B3DF72',
-        'done': '#B3DF72'
-      };
-      
-      const normalizedStatus = status?.toLowerCase() || '';
-      const bgColor = statusColors[normalizedStatus] || '#E9ECEF'; // Default light gray
-      
-      return `<span class="badge" style="background-color: ${bgColor}; color: #000;">${status || 'N/A'}</span>`;
-    };
-
-    // Format priority badge
-    const getPriorityBadge = (priority) => {
-      const priorityClass = {
-        'highest': 'bg-danger',
-        'high': 'bg-danger',
-        'medium': 'bg-warning',
-        'low': 'bg-success',
-        'lowest': 'bg-secondary'
-      }[priority?.toLowerCase()] || 'bg-secondary';
-      
-      return `<span class="badge ${priorityClass}">${priority || 'N/A'}</span>`;
-    };
+    // Using globally defined badge functions
 
     // Store the full issue data in a data attribute
     row.setAttribute('data-issue', JSON.stringify(issue));
@@ -265,11 +290,11 @@ function renderJiraIssues(issues) {
       <td><a href="https://jira.yourdomain.com/browse/${issue.key}" target="_blank" class="text-decoration-none fw-semibold">${issue.key || 'N/A'}</a></td>
       <td class="fw-medium">${truncate(issue.summary, 50)}</td>
       <td class="text-muted">${truncate(issue.description, 100)}</td>
-      <td><span class="badge bg-light text-dark border">${issue.issue_type || 'N/A'}</span></td>
+      <td>${getIssueTypeBadge(issue.issue_type)}</td>
       <td>${getStatusBadge(issue.status)}</td>
       <td>${getPriorityBadge(issue.priority)}</td>
       <td><span class="badge bg-light text-dark border">${issue.assignee || 'Unassigned'}</span></td>
-      <td class="text-muted small">${issue.reporter || 'N/A'}</td>
+      <td><span class="badge bg-light text-dark border">${issue.reporter || 'N/A'}</span></td>
       <td class="text-end">
         <button class="btn btn-sm btn-primary generate-btn d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#issueDetailsModal" style="background: linear-gradient(90deg, #4f46e5, #7c3aed); border: none;">
           <i class="bi bi-magic"></i>
@@ -350,11 +375,11 @@ function showIssueDetails(issue) {
       <div class="col-md-6">
         <div class="mb-3">
           <h6 class="text-muted mb-1 small">Issue Type</h6>
-          <div><span class="badge bg-light text-dark">${issue.issue_type || 'N/A'}</span></div>
+          <div>${getIssueTypeBadge(issue.issue_type)}</div>
         </div>
         <div class="mb-3">
           <h6 class="text-muted mb-1 small">Status</h6>
-          <div><span class="badge bg-info">${issue.status || 'N/A'}</span></div>
+          <div>${getStatusBadge(issue.status)}</div>
         </div>
         <div class="mb-3">
           <h6 class="text-muted mb-1 small">Priority</h6>
@@ -364,11 +389,11 @@ function showIssueDetails(issue) {
       <div class="col-md-6">
         <div class="mb-3">
           <h6 class="text-muted mb-1 small">Assignee</h6>
-          <div>${issue.assignee ? `<span class="badge bg-light text-dark">${issue.assignee}</span>` : 'Unassigned'}</div>
+          <div>${issue.assignee ? `<span class="badge bg-light text-dark border">${issue.assignee}</span>` : '<span class="badge bg-light text-muted border">Unassigned</span>'}</div>
         </div>
         <div class="mb-3">
           <h6 class="text-muted mb-1 small">Reporter</h6>
-          <div>${issue.reporter ? `<span class="badge bg-light text-dark">${issue.reporter}</span>` : 'N/A'}</div>
+          <div>${issue.reporter ? `<span class="badge bg-light text-dark border">${issue.reporter}</span>` : '<span class="badge bg-light text-muted border">N/A</span>'}</div>
         </div>
       </div>
     </div>
@@ -551,9 +576,7 @@ function updateTestCasesTable(testCases) {
           <td class="small">${stepsHtml}</td>
           <td class="small">${formattedExpectedResult}</td>
           <td class="text-nowrap">
-            <span class="badge ${getPriorityBadgeClass(priority)}">
-              ${priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase()}
-            </span>
+            ${getPriorityBadge(priority)}
           </td>
           <td class="text-end">
             <button class="btn btn-outline-danger btn-sm delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
@@ -651,22 +674,39 @@ function updateTestCasesTable(testCases) {
 
 // Helper function to get priority badge HTML
 function getPriorityBadge(priority) {
-  if (!priority) return '<span class="badge bg-secondary">N/A</span>';
+  const priorityColors = {
+    'critical': '#E2483D',
+    'highest': '#E2483D',
+    'high': '#E2483D',
+    'major': '#F68909',
+    'medium': '#F68909',
+    'minor': '#4688EC',
+    'low': '#4688EC',
+    'lowest': '#6C757D'
+  };
   
-  const priorityClass = getPriorityBadgeClass(priority.toLowerCase());
-  const displayText = priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase();
+  const normalizedPriority = priority?.toLowerCase() || '';
+  const bgColor = priorityColors[normalizedPriority] || '#6C757D';
+  const displayText = priority ? (priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase()) : 'N/A';
   
-  return `<span class="badge ${priorityClass}">${displayText}</span>`;
+  return `<span class="badge" style="background-color: ${bgColor}; color: #fff;">${displayText}</span>`;
 }
 
 // Helper function to get badge class for test case priority
 function getPriorityBadgeClass(priority) {
-  const priorityMap = {
-    'high': 'bg-danger',
-    'medium': 'bg-warning',
-    'low': 'bg-success'
+  const priorityColors = {
+    'critical': '#E2483D',
+    'highest': '#E2483D',
+    'high': '#E2483D',
+    'major': '#F68909',
+    'medium': '#F68909',
+    'minor': '#4688EC',
+    'low': '#4688EC',
+    'lowest': '#6C757D'
   };
-  return priorityMap[priority.toLowerCase()] || 'bg-secondary';
+  
+  const normalizedPriority = priority?.toLowerCase() || '';
+  return priorityColors[normalizedPriority] || '#6C757D';
 }
 
 // Initialize event listeners
@@ -1110,7 +1150,7 @@ document.getElementById("generateBtn").addEventListener("click", async () => {
           <td>${tc.title || 'N/A'}</td>
           <td class="steps-cell">${formatSteps(tc.steps)}</td>
           <td>${tc.expectedResult || 'N/A'}</td>
-          <td><span class="badge bg-${getPriorityBadgeClass(tc.priority)}">${tc.priority || 'N/A'}</span></td>
+          <td>${getPriorityBadge(tc.priority)}</td>
         `;
         resultsTable.appendChild(row);
       }, delay);
