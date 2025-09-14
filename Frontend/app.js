@@ -1,3 +1,69 @@
+// Theme Configuration
+const THEME_KEY = 'preferred-theme';
+const THEME_LIGHT = 'light';
+const THEME_DARK = 'dark';
+
+// Initialize theme from localStorage or system preference
+function initTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = savedTheme || (prefersDark ? THEME_DARK : THEME_LIGHT);
+  
+  setTheme(theme);
+  updateThemeButton(theme);
+  return theme;
+}
+
+// Set the theme
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-bs-theme', theme);
+  const themeStylesheet = document.getElementById('theme-stylesheet');
+  if (theme === THEME_DARK) {
+    themeStylesheet.media = 'all';
+  } else {
+    themeStylesheet.media = 'not all';
+  }
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+// Update the theme toggle button icon
+function updateThemeButton(theme) {
+  const themeToggle = document.getElementById('themeToggle');
+  if (!themeToggle) return;
+  
+  const moonIcon = themeToggle.querySelector('.bi-moon-fill');
+  const sunIcon = themeToggle.querySelector('.bi-sun-fill');
+  
+  if (theme === THEME_DARK) {
+    moonIcon.classList.remove('d-none');
+    sunIcon.classList.add('d-none');
+    themeToggle.title = 'Switch to light theme';
+  } else {
+    moonIcon.classList.add('d-none');
+    sunIcon.classList.remove('d-none');
+    themeToggle.title = 'Switch to dark theme';
+  }
+}
+
+// Toggle between light and dark theme
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-bs-theme') || THEME_LIGHT;
+  const newTheme = currentTheme === THEME_LIGHT ? THEME_DARK : THEME_LIGHT;
+  setTheme(newTheme);
+  updateThemeButton(newTheme);
+}
+
+// Initialize theme on page load
+document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+  
+  // Add event listener to theme toggle button
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', toggleTheme);
+  }
+});
+
 // API Configuration
 const JIRA_API_BASE_URL = 'http://localhost:8000/api/jira';
 const JIRA_PROJECT_KEY = 'SE2';
