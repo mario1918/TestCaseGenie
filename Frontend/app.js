@@ -644,7 +644,7 @@ function updateTestCasesTable(testCases) {
         const priority = testCase.priority || 'medium';
         
         row.innerHTML = `
-          <td class="text-nowrap">${testCaseId}</td>
+          <td class="text-nowrap">${testCaseId.id || testCaseId}</td>
           <td class="font-weight-medium">${testCaseTitle}</td>
           <td class="small">${stepsHtml}</td>
           <td class="small">${formattedExpectedResult}</td>
@@ -652,9 +652,14 @@ function updateTestCasesTable(testCases) {
             ${getPriorityBadge(priority)}
           </td>
           <td class="text-end">
-            <button class="btn btn-outline-danger btn-sm delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
-              <i class="bi bi-trash"></i>Delete
-            </button>
+            <div class="btn-group btn-group-sm" role="group">
+              <button class="btn btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
+                <i class="bi bi-pencil"></i> Edit
+              </button>
+              <button class="btn btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
+                <i class="bi bi-trash"></i> Delete
+              </button>
+            </div>
           </td>
         `;
         
@@ -676,6 +681,270 @@ function updateTestCasesTable(testCases) {
       exportBtn.disabled = testCases.length === 0;
     }
     
+    // Initialize modals
+    const addTestCaseModal = new bootstrap.Modal(document.getElementById('addTestCaseModal'));
+    const editTestCaseModal = new bootstrap.Modal(document.getElementById('editTestCaseModal'));
+    let currentEditingRow = null;
+    
+    // Add Test Case button click handler
+    document.getElementById('addTestCaseBtn').addEventListener('click', function() {
+      // Reset the form
+      document.getElementById('addTestCaseForm').reset();
+      // Set default priority
+      document.getElementById('newTestCasePriority').value = 'medium';
+      // Show the modal
+      addTestCaseModal.show();
+    });
+    
+    // Save New Test Case button click handler
+    document.getElementById('saveNewTestCase').addEventListener('click', function() {
+      // Get form values
+      const title = document.getElementById('newTestCaseTitle').value.trim();
+      const steps = document.getElementById('newTestCaseSteps').value.trim();
+      const expectedResult = document.getElementById('newTestCaseExpected').value.trim();
+      const priority = document.getElementById('newTestCasePriority').value;
+      
+      // Validate required fields
+      if (!title || !steps || !expectedResult) {
+        alert('Please fill in all required fields');
+        return;
+      }
+      
+      try {
+        // Get the tbody element
+        const tbody = document.querySelector('#resultsTable tbody');
+        if (!tbody) return;
+        
+        // Get all existing test case IDs to find the highest number
+        const existingIds = [];
+        const idCells = tbody.querySelectorAll('td:first-child');
+        idCells.forEach(cell => {
+          const idNum = parseInt(cell.textContent.trim());
+          if (!isNaN(idNum)) {
+            existingIds.push(idNum);
+          }
+        });
+        
+        // Calculate the next ID (1 if no existing IDs, otherwise max + 1)
+        const testCaseId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+        
+        // Create a new test case object
+        const newTestCase = {
+          id: testCaseId,
+          title: title,
+          steps: steps,
+          expectedResult: expectedResult,
+          priority: priority
+        };
+        
+        // Create a new row for the test case
+        const newRow = document.createElement('tr');
+        newRow.className = 'fade-in';
+        newRow.style.animationDelay = '0ms';
+        
+        // Format steps for display
+        const stepsHtml = steps.split('\n').map(step => step.trim()).filter(step => step).join('<br>');
+        const expectedHtml = expectedResult.split('\n').map(line => line.trim()).filter(line => line).join('<br>');
+        
+        // Set the row HTML
+        newRow.innerHTML = `
+          <td class="text-nowrap">${testCaseId.id || testCaseId}</td>
+          <td class="font-weight-medium">${title}</td>
+          <td class="small">${stepsHtml}</td>
+          <td class="small">${expectedHtml}</td>
+          <td class="text-nowrap">
+            ${getPriorityBadge(priority)}
+          </td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm" role="group">
+              <button class="btn btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
+                <i class="bi bi-pencil"></i> Edit
+              </button>
+              <button class="btn btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
+                <i class="bi bi-trash"></i> Delete
+              </button>
+            </div>
+          </td>
+        `;
+        
+        // Add the new row to the table
+        tbody.appendChild(newRow);
+        
+        // Add event listeners to the new buttons
+        addRowEventListeners(newRow);
+        
+        // Close the modal
+        addTestCaseModal.hide();
+        
+        // Enable the export button if it was disabled
+        const exportBtn = document.getElementById('exportToExcelBtn');
+        if (exportBtn) {
+          exportBtn.disabled = false;
+        }
+        
+        // Show success message
+        const toast = new bootstrap.Toast(document.getElementById('successToast'));
+        const toastBody = document.querySelector('#successToast .toast-body');
+        toastBody.textContent = 'Test case added successfully!';
+        toast.show();
+        
+      } catch (error) {
+        console.error('Error adding test case:', error);
+        alert('An error occurred while adding the test case');
+      }
+    });
+    
+    // Function to add event listeners to a table row
+    function addRowEventListeners(row) {
+      // Add edit button event listener
+      const editBtn = row.querySelector('.edit-test-case');
+      if (editBtn) {
+        editBtn.addEventListener('click', handleEditTestCase);
+      }
+      
+      // Add delete button event listener
+      const deleteBtn = row.querySelector('.delete-test-case');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', handleDeleteTestCase);
+      }
+    }
+    
+    // Handle edit test case
+    function handleEditTestCase(e) {
+      e.stopPropagation();
+      const row = this.closest('tr');
+      if (!row) return;
+      
+      // Store the reference to the current row being edited
+      currentEditingRow = row;
+      
+      // Get the test case data from the row
+      const testCaseId = this.getAttribute('data-test-id');
+      const testCase = {
+        id: testCaseId,
+        title: row.cells[1].textContent.trim(),
+        steps: row.cells[2].innerHTML.replace(/<br\s*\/?>/g, '\n').trim(),
+        expectedResult: row.cells[3].innerHTML.replace(/<br\s*\/?>/g, '\n').trim(),
+        priority: row.cells[4].querySelector('.badge').textContent.trim().toLowerCase()
+      };
+      
+      // Populate the edit form
+      document.getElementById('editTestCaseId').value = testCase.id;
+      document.getElementById('editTestCaseTitle').value = testCase.title;
+      document.getElementById('editTestCaseSteps').value = testCase.steps;
+      document.getElementById('editTestCaseExpected').value = testCase.expectedResult;
+      document.getElementById('editTestCasePriority').value = testCase.priority || 'medium';
+      
+      // Show the edit modal
+      editTestCaseModal.show();
+    }
+    
+    // Handle delete test case
+    function handleDeleteTestCase(e) {
+      e.stopPropagation();
+      const row = this.closest('tr');
+      if (!row) return;
+      
+      // Add fade out effect
+      row.style.transition = 'opacity 0.3s ease';
+      row.style.opacity = '0';
+      
+      // Remove the row after the fade out completes
+      setTimeout(() => {
+        row.remove();
+        
+        // Check if there are any test cases left
+        const tbody = document.querySelector('#resultsTable tbody');
+        if (tbody && tbody.rows.length === 0) {
+          // If no test cases left, disable the export button
+          const exportBtn = document.getElementById('exportToExcelBtn');
+          if (exportBtn) {
+            exportBtn.disabled = true;
+          }
+        }
+      }, 300);
+    }
+
+    // Add event listeners for edit buttons
+    document.querySelectorAll('.edit-test-case').forEach(button => {
+      button.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const row = this.closest('tr');
+        if (!row) return;
+        
+        // Store the reference to the current row being edited
+        currentEditingRow = row;
+        
+        // Get the test case data from the row
+        const testCaseId = this.getAttribute('data-test-id');
+        const testCase = {
+          id: testCaseId,
+          title: row.cells[1].textContent.trim(),
+          steps: row.cells[2].innerHTML.replace(/<br\s*\/?>/g, '\n').trim(),
+          expectedResult: row.cells[3].innerHTML.replace(/<br\s*\/?>/g, '\n').trim(),
+          priority: row.cells[4].querySelector('.badge').textContent.trim().toLowerCase()
+        };
+        
+        // Populate the modal form
+        document.getElementById('editTestCaseId').value = testCase.id;
+        document.getElementById('editTestCaseTitle').value = testCase.title;
+        document.getElementById('editTestCaseSteps').value = testCase.steps;
+        document.getElementById('editTestCaseExpected').value = testCase.expectedResult;
+        document.getElementById('editTestCasePriority').value = testCase.priority || 'medium';
+        
+        // Show the modal
+        editTestCaseModal.show();
+      });
+    });
+
+    // Handle save changes button click
+    document.getElementById('saveTestCaseChanges').addEventListener('click', function() {
+      if (!currentEditingRow) return;
+      
+      // Get the updated values from the form
+      const title = document.getElementById('editTestCaseTitle').value.trim();
+      const steps = document.getElementById('editTestCaseSteps').value.trim();
+      const expectedResult = document.getElementById('editTestCaseExpected').value.trim();
+      const priority = document.getElementById('editTestCasePriority').value;
+      
+      if (!title || !steps || !expectedResult) {
+        alert('Please fill in all required fields');
+        return;
+      }
+      
+      try {
+        // Update the table row with the edited values
+        currentEditingRow.cells[1].textContent = title;
+        currentEditingRow.cells[2].innerHTML = steps.replace(/\n/g, '<br>');
+        currentEditingRow.cells[3].innerHTML = expectedResult.replace(/\n/g, '<br>');
+        currentEditingRow.cells[4].innerHTML = getPriorityBadge(priority);
+        
+        // Close the modal
+        editTestCaseModal.hide();
+        
+        // Show success message
+        const toast = new bootstrap.Toast(document.getElementById('successToast'));
+        const toastBody = document.querySelector('#successToast .toast-body');
+        toastBody.textContent = 'Test case updated successfully!';
+        toast.show();
+        
+      } catch (error) {
+        console.error('Error updating test case:', error);
+        alert('An error occurred while updating the test case');
+      }
+    });
+    
+    // Reset the form when the modal is hidden
+    document.getElementById('editTestCaseModal').addEventListener('hidden.bs.modal', function () {
+      document.getElementById('editTestCaseForm').reset();
+      currentEditingRow = null;
+    });
+    
+    // Reset the form when the add modal is hidden
+    document.getElementById('addTestCaseModal').addEventListener('hidden.bs.modal', function () {
+      document.getElementById('addTestCaseForm').reset();
+    });
+
     // Add event listeners for delete buttons
     document.querySelectorAll('.delete-test-case').forEach(button => {
       button.addEventListener('click', function(e) {
