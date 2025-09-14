@@ -612,6 +612,23 @@ function updateTestCasesTable(testCases) {
       return;
     }
     
+    // Scroll to position the test cases in the middle of the screen
+    setTimeout(() => {
+      const anchor = document.getElementById('testCasesAnchor');
+      if (anchor) {
+        // Calculate the position to scroll to (70% from the top of the viewport)
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const anchorPosition = anchor.getBoundingClientRect().top + window.pageYOffset;
+        const scrollTo = anchorPosition - (viewportHeight * 0.3); // Position at 30% from top (showing 70% below)
+        
+        // Smooth scroll to the calculated position
+        window.scrollTo({
+          top: scrollTo,
+          behavior: 'smooth'
+        });
+      }
+    }, 100);
+    
     testCases.forEach((testCase, index) => {
       try {
         const row = document.createElement('tr');
@@ -1124,7 +1141,7 @@ function initializeEventListeners() {
         return;
       }
       
-      // Close the modal immediately
+      // Close the modal
       const modalInstance = bootstrap.Modal.getInstance(modal);
       if (modalInstance) {
         modalInstance.hide();
