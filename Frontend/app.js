@@ -225,7 +225,8 @@ function getIssueTypeBadge(issueType) {
     'new feature': '#82B536',
     'sub-task': '#4688EC',
     'subtask': '#4688EC',
-    'test': '#8FB8F6'
+    'test': '#8FB8F6',
+    'epic': '#BF63F3'
   };
   
   const normalizedType = issueType?.toLowerCase() || '';
