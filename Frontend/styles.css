@@ -37,8 +37,73 @@
   --bs-table-bg: transparent;
   --bs-table-striped-bg: rgba(0, 0, 0, 0.01);
   margin-bottom: 0;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+
+/* Make table container scrollable */
+.table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  -ms-overflow-style: -ms-autohiding-scrollbar;
+}
+
+/* Table cell styles */
+.table td, .table th {
+  vertical-align: middle;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  padding: 0.75rem;
+}
+
+/* Resizable columns */
+th[data-resizable="true"] {
+  position: relative;
+  cursor: col-resize;
+  user-select: none;
+}
+
+th[data-resizable="true"]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.1);
+  cursor: col-resize;
+  z-index: 1;
+}
+
+/* Hover effect for resizable columns */
+th[data-resizable="true"]:hover::after {
+  background-color: #0d6efd;
+}
+
+/* Make sure dropdowns are visible */
+.table .form-select {
+  width: 100%;
+  min-width: 100px;
+}
+
+/* Ensure text in cells is properly aligned and truncated */
+.table td {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* For cells that should wrap */
+.table td.wrap-text {
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 /* Table header styles for both themes */

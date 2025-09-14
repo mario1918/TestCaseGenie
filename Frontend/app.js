@@ -384,15 +384,16 @@ async function loadJiraIssues() {
     toastBody.textContent = 'Please wait while we load your Jira issues...';
     loadingToastJira.show();
     
+    console.log('Loading Jira issues...');
     const data = await fetchJiraIssues();
-    if (data) {
+    console.log('Received Jira issues data:', data);
+    
+    if (data && data.issues) {
+      console.log(`Rendering ${data.issues.length} Jira issues`);
       renderJiraIssues(data);
-      
-      // // Show success toast
-      // const successToastJira = bootstrap.Toast.getOrCreateInstance(document.getElementById('successToastJira'));
-      // const successToastBody = document.querySelector('#successToastJira .toast-body');
-      // successToastBody.textContent = `Successfully loaded ${data.issues.length} Jira issue(s)!`;
-      // successToastJira.show();
+    } else {
+      console.warn('No issues data received or invalid format:', data);
+      renderJiraIssues({ issues: [], total: 0 });
     }
   } catch (error) {
     console.error('Error:', error);
@@ -583,29 +584,27 @@ async function generateTestCasesFromIssue(issue) {
     
     // Re-throw the error for further handling if needed
     throw error;
-    
-  } finally {
-    // Any cleanup code if needed
   }
 }
 
 // Update the test cases table with generated test cases
 function updateTestCasesTable(testCases) {
   try {
-    console.log('Updating test cases table with:', testCases);
+    console.log('[updateTestCasesTable] Starting to update table with test cases:', testCases);
     
     const tbody = document.querySelector('#resultsTable tbody');
     if (!tbody) {
-      console.error('Test cases table body not found');
+      console.error('[updateTestCasesTable] Error: Test cases table body not found');
       return;
     }
     
     tbody.innerHTML = ''; // Clear existing rows
     
     if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
+      console.warn('[updateTestCasesTable] No test cases provided or empty array');
       tbody.innerHTML = `
         <tr>
-          <td colspan="5" class="text-center py-4">
+          <td colspan="7" class="text-center py-4">
             <div class="text-muted">No test cases were generated. Please try again.</div>
           </td>
         </tr>`;
@@ -629,56 +628,119 @@ function updateTestCasesTable(testCases) {
       }
     }, 100);
     
+    // Create table rows for each test case
     testCases.forEach((testCase, index) => {
       try {
+        console.log(`[updateTestCasesTable] Processing test case ${index + 1}:`, testCase);
+        
         const row = document.createElement('tr');
         row.className = 'fade-in';
         row.style.animationDelay = `${index * 50}ms`;
         
-        // Handle different possible test case formats
+        // Extract test case data with fallbacks
         const testCaseId = testCase.id || testCase.testCaseId || `TC-${index + 1}`;
         const testCaseTitle = testCase.title || testCase.name || `Test Case ${index + 1}`;
+        const priority = testCase.priority || 'medium';
+        const executionStatus = testCase.executionStatus || 'UNEXECUTED';
         
         // Format steps - handle both string and array formats
-        let stepsHtml = 'N/A';
-        if (testCase.steps) {
-          if (Array.isArray(testCase.steps)) {
-            stepsHtml = testCase.steps
-              .map((step, i) => `${i + 1}. ${step}`)
-              .join('<br>');
-          } else if (typeof testCase.steps === 'string') {
-            stepsHtml = testCase.steps.replace(/\n/g, '<br>');
+        let steps = 'N/A';
+        if (Array.isArray(testCase.steps)) {
+          steps = testCase.steps.map((step, i) => `${i + 1}. ${step}`).join('<br>');
+        } else if (testCase.steps) {
+          steps = testCase.steps.toString().replace(/\n/g, '<br>');
+        }
+        
+        // Format expected results - handle both string and array formats
+        let expectedResults = 'N/A';
+        if (Array.isArray(testCase.expectedResults)) {
+          expectedResults = testCase.expectedResults.join('<br>');
+        } else if (testCase.expectedResults) {
+          expectedResults = testCase.expectedResults.toString().replace(/\n/g, '<br>');
+        } else if (testCase.expectedResult) {
+          expectedResults = Array.isArray(testCase.expectedResult) 
+            ? testCase.expectedResult.join('<br>')
+            : testCase.expectedResult.toString().replace(/\n/g, '<br>');
+        }
+        
+        // Function to get status color
+        function getStatusColor(status) {
+          switch(status) {
+            case 'PASS': return '#198754'; // Green
+            case 'FAIL': return '#dc3545'; // Red
+            case 'WIP': return '#ffc107';  // Yellow
+            case 'BLOCKED': return '#6f42c1'; // Purple
+            default: return '#6c757d'; // Gray for UNEXECUTED
           }
         }
         
-        // Format expected result
-        const expectedResult = testCase.expectedResult || testCase.expected || 'N/A';
-        const formattedExpectedResult = typeof expectedResult === 'string' 
-          ? expectedResult.replace(/\n/g, '<br>') 
-          : JSON.stringify(expectedResult);
+        // Function to create priority badge
+        function createPriorityBadge(priority) {
+          const priorityLower = priority ? priority.toLowerCase() : 'medium';
+          let badgeClass = 'secondary';
+          
+          switch(priorityLower) {
+            case 'high':
+              badgeClass = 'bg-danger';
+              break;
+            case 'medium':
+              badgeClass = 'bg-warning';
+              break;
+            case 'low':
+              badgeClass = 'bg-success';
+              break;
+            default:
+              badgeClass = 'bg-secondary';
+          }
+          
+          return `<span class="badge ${badgeClass}">${priority || 'Medium'}</span>`;
+        }
         
-        // Get priority with fallback
-        const priority = testCase.priority || 'medium';
+        // Add styles for the execution status dropdown
+        const statusStyles = `
+          <style>
+            .execution-status option[value="UNEXECUTED"] { background-color: #ffffff; color: #000000; }
+            .execution-status option[value="PASS"] { background-color: #198754; color: white; }
+            .execution-status option[value="FAIL"] { background-color: #dc3545; color: white; }
+            .execution-status option[value="BLOCKED"] { background-color: #4a2d82; color: white; }
+          </style>
+        `;
         
+        // Create the row content
         row.innerHTML = `
-          <td class="text-nowrap">${testCaseId.id || testCaseId}</td>
-          <td class="font-weight-medium">${testCaseTitle}</td>
-          <td class="small">${stepsHtml}</td>
-          <td class="small">${formattedExpectedResult}</td>
+          <td class="text-nowrap">${testCaseId}</td>
+          <td class="wrap-text">${testCaseTitle}</td>
+          <td class="wrap-text">${steps}</td>
+          <td class="wrap-text">${expectedResults}</td>
+          <td class="text-nowrap">${createPriorityBadge(testCase.priority || 'medium')}</td>
           <td class="text-nowrap">
-            ${getPriorityBadge(priority)}
+            ${statusStyles}
+            <select class="form-select form-select-sm execution-status" 
+                    data-test-id="${testCaseId}" 
+                    style="background-color: ${executionStatus === 'UNEXECUTED' ? '#ffffff' : getStatusColor(executionStatus)}; color: ${executionStatus === 'UNEXECUTED' ? '#000000' : 'white'}; transition: background-color 0.3s ease, color 0.3s ease;">
+              <option value="UNEXECUTED" ${executionStatus === 'UNEXECUTED' ? 'selected' : ''} style="background-color: #ffffff; color: #000000;">UNEXECUTED</option>
+              <option value="PASS" ${executionStatus === 'PASS' ? 'selected' : ''} style="background-color: #198754; color: white;">PASS</option>
+              <option value="FAIL" ${executionStatus === 'FAIL' ? 'selected' : ''} style="background-color: #dc3545; color: white;">FAIL</option>
+              <option value="BLOCKED" ${executionStatus === 'BLOCKED' ? 'selected' : ''} style="background-color: #4a2d82; color: white;">BLOCKED</option>
+            </select>
           </td>
-          <td class="text-end">
-            <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
-                <i class="bi bi-pencil"></i> Edit
-              </button>
-              <button class="btn btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
-                <i class="bi bi-trash"></i> Delete
-              </button>
-            </div>
+          <td class="text-nowrap">
+            <button class="btn btn-sm btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
+              <i class="bi bi-trash"></i>
+            </button>
           </td>
         `;
+        
+        // Add event listener to update background color when selection changes
+        const statusSelect = row.querySelector('.execution-status');
+        if (statusSelect) {
+          statusSelect.addEventListener('change', function() {
+            this.style.backgroundColor = getStatusColor(this.value);
+          });
+        }
         
         tbody.appendChild(row);
       } catch (rowError) {
@@ -1070,6 +1132,25 @@ function getPriorityBadgeClass(priority) {
 
 // Initialize event listeners
 function initializeEventListeners() {
+  // Handle Execution Status dropdown changes
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('.execution-status')) {
+      const testId = e.target.getAttribute('data-test-id');
+      const status = e.target.value;
+      console.log(`Test case ${testId} status changed to:`, status);
+      
+      // Update the test case data with the new status
+      const testCases = Array.from(document.querySelectorAll('#resultsTable tbody tr')).map(row => {
+        const testId = row.querySelector('.execution-status')?.getAttribute('data-test-id');
+        const status = row.querySelector('.execution-status')?.value || 'UNEXECUTED';
+        return { id: testId, executionStatus: status };
+      });
+      
+      // You can add additional logic here to save the status to your data store
+      // For example: saveTestCases(testCases);
+    }
+  });
+
   // Handle click on Generate button in the table
   document.addEventListener('click', async (e) => {
     if (e.target.closest('.generate-btn')) {
@@ -1214,6 +1295,13 @@ function initializeEventListeners() {
   // Apply filters button
   document.getElementById('applyFilters')?.addEventListener('click', applyFilters);
   
+  // Add Enter key event listener for jqlFilter input
+  document.getElementById('jqlFilter')?.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      applyFilters();
+    }
+  });
+  
   // Clear filters button
   document.getElementById('clearFilters')?.addEventListener('click', clearFilters);
   
@@ -1245,78 +1333,6 @@ function exportToExcel() {
   try {
     const table = document.getElementById('resultsTable');
     if (!table) {
-      showError('Could not find test cases table');
-      return;
-    }
-
-    // Get all rows from the table (skip header and any empty rows)
-    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => 
-      row.cells.length > 0 && 
-      !row.classList.contains('d-none') && 
-      row.style.display !== 'none' &&
-      row.offsetParent !== null
-    );
-
-    if (rows.length === 0) {
-      showError('No test cases to export');
-      return;
-    }
-
-    // Prepare data array for Excel
-    const data = [
-      ['ID', 'Title', 'Steps', 'Expected Result', 'Priority'] // Header row
-    ];
-
-    // Process each row
-    rows.forEach(row => {
-      const cells = row.cells;
-      if (cells.length >= 5) { // Make sure we have enough cells
-        const rowData = [
-          cells[0].textContent.trim(), // ID
-          cells[1].textContent.trim(), // Title
-          cells[2].textContent.trim(), // Steps
-          cells[3].textContent.trim(), // Expected Result
-          cells[4].textContent.trim()  // Priority
-        ];
-        data.push(rowData);
-      }
-    });
-
-    // Create workbook and worksheet
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    
-    // Auto-size columns
-    const wscols = [
-      {wch: 10}, // ID
-      {wch: 40}, // Title
-      {wch: 60}, // Steps
-      {wch: 40}, // Expected Result
-      {wch: 15}  // Priority
-    ];
-    ws['!cols'] = wscols;
-    
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, 'Test Cases');
-    
-    // Generate Excel file and trigger download
-    const date = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `TestCases_${date}.xlsx`);
-    
-    // Show success message
-    showSuccessToast('Test cases exported successfully!');
-    
-  } catch (error) {
-    console.error('Error exporting to Excel:', error);
-    console.error('Failed to export test cases to Excel');
-  }
-}
-
-// Export test cases to Excel
-function exportToExcel() {
-  try {
-    const table = document.getElementById('resultsTable');
-    if (!table) {
       console.error('Results table not found');
       return;
     }
@@ -1330,19 +1346,23 @@ function exportToExcel() {
     
     // Prepare the data for export
     const data = [
-      ['ID', 'Title', 'Steps', 'Expected Result', 'Priority'] // Header row
+      ['ID', 'Title', 'Steps', 'Expected Result', 'Priority', 'Execution Status'] // Header row
     ];
     
     // Add data rows
     rows.forEach(row => {
       const cells = row.querySelectorAll('td');
       if (cells.length >= 5) {
+        // Get the selected value from the execution status dropdown
+        const executionStatus = cells[5]?.querySelector('select')?.value || 'UNEXECUTED';
+        
         data.push([
           cells[0]?.textContent?.trim() || '',
           cells[1]?.textContent?.trim() || '',
           cells[2]?.textContent?.trim() || '',
           cells[3]?.textContent?.trim() || '',
-          cells[4]?.querySelector('.badge')?.textContent?.trim() || ''
+          cells[4]?.querySelector('.badge')?.textContent?.trim() || '',
+          executionStatus
         ]);
       }
     });
@@ -1357,7 +1377,8 @@ function exportToExcel() {
       { wch: 40 }, // Title
       { wch: 60 }, // Steps
       { wch: 60 }, // Expected Result
-      { wch: 15 }  // Priority
+      { wch: 15 }, // Priority
+      { wch: 15 }  // Execution Status
     ];
     
     // Add the worksheet to the workbook
@@ -1384,6 +1405,52 @@ function exportToExcel() {
   }
 }
 
+// Make table columns resizable
+function makeResizableColumns() {
+  const resizableColumns = document.querySelectorAll('th[data-resizable="true"]');
+  
+  resizableColumns.forEach((header, index) => {
+    let startX, startWidth;
+    const column = header;
+    const nextColumn = column.nextElementSibling;
+    
+    const onMouseDown = (e) => {
+      startX = e.pageX;
+      startWidth = column.offsetWidth;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      e.preventDefault();
+    };
+    
+    const onMouseMove = (e) => {
+      const newWidth = startWidth + (e.pageX - startX);
+      
+      // Set minimum width
+      if (newWidth > 50) {
+        column.style.width = `${newWidth}px`;
+        
+        // Update the col element width if it exists
+        const colgroup = document.querySelector('colgroup');
+        if (colgroup && colgroup.children[index]) {
+          colgroup.children[index].style.width = `${newWidth}px`;
+        }
+      }
+    };
+    
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    
+    column.addEventListener('mousedown', onMouseDown);
+    
+    // Prevent text selection while resizing
+    column.addEventListener('selectstart', (e) => {
+      e.preventDefault();
+    });
+  });
+}
+
 // Initialize the page
 function initializePage() {
   loadJiraBoards();
@@ -1401,6 +1468,9 @@ function initializePage() {
   // Initialize toast timestamps
   updateToastTimestamps();
   setInterval(updateToastTimestamps, 30000); // Update timestamps every 30 seconds
+  
+  // Make columns resizable after table is loaded
+  makeResizableColumns();
 }
 
 // Run initialization when DOM is fully loaded
@@ -1425,102 +1495,130 @@ function updateToastTimestamps() {
   });
 }
 
-document.getElementById("generateBtn").addEventListener("click", async () => {
-  const userStory = document.getElementById("userStory").value.trim();
+document.getElementById("generateBtn")?.addEventListener("click", async () => {
+  const userStory = document.getElementById("userStory")?.value.trim();
   const loading = document.getElementById("loading");
   const errorDiv = document.getElementById("error");
   const resultsTable = document.querySelector("#resultsTable tbody");
-  const rawOutput = document.getElementById("rawOutput");
   const testCaseCountElement = document.getElementById("testCaseCount");
-
-  // Reset UI
-  errorDiv.classList.add("d-none");
-  resultsTable.innerHTML = "";
-  rawOutput.textContent = "";
-  document.querySelector('.toast').classList.remove('show');
-
-  if (!userStory) {
-    errorDiv.textContent = "Please enter a user story.";
-    errorDiv.classList.remove("d-none");
-    return;
-  }
-
-  // Show loading state
-  loading.classList.remove("d-none");
-  updateToastTimestamps();
-  loadingToast.show();
+  const successToastEl = document.getElementById('successToast');
+  const successToast = successToastEl ? new bootstrap.Toast(successToastEl) : null;
+  const loadingToastEl = document.getElementById('loadingToast');
+  const loadingToast = loadingToastEl ? new bootstrap.Toast(loadingToastEl) : null;
 
   try {
-    const response = await fetch("http://localhost:5000/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description: userStory }),
+    console.log('Generate button clicked');
+    
+    // Reset UI
+    errorDiv?.classList.add("d-none");
+    resultsTable.innerHTML = "";
+    document.querySelectorAll('.toast').forEach(toast => {
+      const bsToast = bootstrap.Toast.getInstance(toast);
+      if (bsToast) bsToast.hide();
     });
 
+    if (!userStory) {
+      showError("Please enter a user story.");
+      return;
+    }
+
+    // Show loading state
+    console.log('Showing loading state');
+    loading?.classList.remove("d-none");
+    updateToastTimestamps();
+    loadingToast?.show();
+
+    console.log('Sending request to /generate endpoint');
+    const response = await fetch("http://localhost:5000/generate", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ 
+        description: userStory,
+        summary: userStory.substring(0, 100)
+      }),
+    });
+
+    console.log('Received response status:', response.status);
+    
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || "Failed to generate test cases");
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      let errorMessage = `Failed to generate test cases: ${response.statusText}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (e) {
+        console.error('Error parsing error response:', e);
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
+    console.log('Response data:', data);
     
-    // Hide loading and show success
-    loading.classList.add("d-none");
-    loadingToast.hide();
+    console.log('Raw API response data:', data);
+
+    let testCases = [];
+    if (Array.isArray(data)) {
+      testCases = data;
+    } else if (data && typeof data === 'object') {
+      testCases = data.testCases || data.data || [];
+      
+      // If we have a single test case object, wrap it in an array
+      if (testCases && !Array.isArray(testCases)) {
+        testCases = [testCases];
+      }
+    }
+    
+    console.log('Processed test cases:', testCases);
+    
+    if (!testCases || testCases.length === 0) {
+      throw new Error('No test cases were generated. The response was empty or in an unexpected format.');
+    }
+    
+    // Update the test cases table
+    console.log('Updating test cases table with', testCases.length, 'test cases');
+    
+    // Force reflow to ensure the table is properly updated
+    const table = document.querySelector('#resultsTable');
+    if (table) {
+      table.style.display = 'none';
+      table.offsetHeight; // Trigger reflow
+      table.style.display = '';
+    }
+    
+    updateTestCasesTable(testCases);
     
     // Update test case count
-    const testCaseCount = data.testCases.length;
-    testCaseCountElement.textContent = testCaseCount;
+    if (testCaseCountElement) {
+      testCaseCountElement.textContent = testCases.length;
+    }
     
-    // Show success toast
+    // Show success message
     updateToastTimestamps();
-    successToast.show();
-
-    // Display test cases
-    rawOutput.textContent = JSON.stringify(data.testCases, null, 2);
+    successToast?.show();
     
-    // Add test cases to the table with a small delay for better UX
-    let delay = 0;
-    data.testCases.forEach((tc, index) => {
-      setTimeout(() => {
-        const formatSteps = (steps) => {
-          if (!steps) return 'N/A';
-          // Split by common step separators and filter out empty steps
-          const stepList = steps
-            .split(/\n|\r\n|\d+\.\s*/)
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
-          
-          // Return as numbered list if we have multiple steps
-          if (stepList.length > 1) {
-            return stepList.map((step, i) => 
-              `${i + 1}. ${step}`
-            ).join('<br>');
-          }
-          // Return as is if it's a single step
-          return stepList[0] || 'N/A';
-        };
-
-        const row = document.createElement('tr');
-        row.className = 'fade-in';
-        row.style.animationDelay = `${index * 50}ms`;
-        row.innerHTML = `
-          <td>${tc.id || '-'}</td>
-          <td>${tc.title || 'N/A'}</td>
-          <td class="steps-cell">${formatSteps(tc.steps)}</td>
-          <td>${tc.expectedResult || 'N/A'}</td>
-          <td>${getPriorityBadge(tc.priority)}</td>
-        `;
-        resultsTable.appendChild(row);
-      }, delay);
-      delay += 50; // 50ms delay between each row appearance
-    });
+    // Show the test cases section if it was hidden
+    const testCasesSection = document.getElementById('testCasesSection');
+    if (testCasesSection) {
+      testCasesSection.classList.remove('d-none');
+    }
+  } catch (error) {
+    console.error('Error generating test cases:', error);
+    showError(error.message || 'Failed to generate test cases. Please check the console for details.');
     
-  } catch (err) {
-    loading.classList.add("d-none");
-    loadingToast.hide();
-    errorDiv.textContent = err.message;
-    errorDiv.classList.remove("d-none");
+    // Hide loading state if it's still visible
+    const loading = document.getElementById("loading");
+    const loadingToastEl = document.getElementById('loadingToast');
+    const loadingToast = bootstrap.Toast.getOrCreateInstance(loadingToastEl);
+    
+    loading?.classList.add("d-none");
+    loadingToast?.hide();
   }
 });
 
@@ -1534,5 +1632,3 @@ function getPriorityBadgeClass(priority) {
     'low': 'success'
   }[priorityLower] || 'secondary';
 }
-
-
