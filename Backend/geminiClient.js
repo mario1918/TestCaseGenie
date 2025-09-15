@@ -19,6 +19,8 @@ export async function generateTestCases(userStory) {
     You are an expert Senior Software Tester and QA Test Case Generator.
     Generate well-structured positive, negative, boundary and edge test cases in strict JSON format only.
     Do not include any explanations or extra text.
+    Write the Steps in a numbered list format. Each step should be a single line.
+    For steps, always start with "Navigate to https://a-qa-my.siliconexpert.com/"
     
     The format must be:
     [
