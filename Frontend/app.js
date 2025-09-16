@@ -573,6 +573,20 @@ async function generateTestCasesFromIssue(issue) {
     // Update the test cases table
     updateTestCasesTable(testCases);
     
+    // Update the heading with issue key and sprint badges
+    const heading = document.getElementById('generatedTestCasesHeading');
+    if (heading) {
+      const sprintName = (issue.sprint && issue.sprint !== 'N/A') ? issue.sprint : 'No Sprint';
+      
+      heading.innerHTML = `
+        <div class="d-flex align-items-center gap-2">
+          <span>Generated Test Cases</span>
+          <span class="badge bg-primary">${issue.key}</span>
+          <span class="badge bg-info text-dark">${sprintName}</span>
+        </div>
+      `;
+    }
+    
     // Don't show success toast here - it's now handled in the click handler
     
     // Update test case count
