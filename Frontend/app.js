@@ -1145,14 +1145,75 @@ function getPriorityBadgeClass(priority) {
   return priorityColors[normalizedPriority] || '#6C757D';
 }
 
+// Load Jira versions for the import dropdown
+async function loadJiraVersions() {
+  try {
+    const response = await fetch('http://localhost:8000/api/jira/versions?all=true&max_per_page=50');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const versions = await response.json();
+    
+    const versionSelect = document.getElementById('versionSelect');
+    if (!versionSelect) return;
+    
+    // Clear existing options except the first one (the default/placeholder)
+    while (versionSelect.options.length > 1) {
+      versionSelect.remove(1);
+    }
+    
+    // Sort versions by release date in descending order (newest first)
+    versions.sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate));
+    
+    // Add versions to the dropdown
+    versions.forEach(version => {
+      const option = document.createElement('option');
+      option.value = version.id;
+      option.textContent = version.name;
+      // Store the full version object as a data attribute for later use
+      option.dataset.versionData = JSON.stringify(version);
+      versionSelect.appendChild(option);
+    });
+    
+    return versions;
+  } catch (error) {
+    console.error('Error loading Jira versions:', error);
+    showError('Failed to load Jira versions. Please try again later.');
+    return [];
+  }
+}
+
 // Handle Import to Jira button click
-function handleImportToJira() {
+async function handleImportToJira() {
   // Show the import modal
   const importModal = new bootstrap.Modal(document.getElementById('importToJiraModal'));
   importModal.show();
   
-  // TODO: Load versions and test cycles from Jira API
-  // For now, we'll use the static options defined in the HTML
+  // Show loading state
+  const versionSelect = document.getElementById('versionSelect');
+  if (versionSelect) {
+    const loadingOption = document.createElement('option');
+    loadingOption.value = '';
+    loadingOption.textContent = 'Loading versions...';
+    loadingOption.disabled = true;
+    loadingOption.selected = true;
+    
+    // Clear existing options except the first one
+    while (versionSelect.options.length > 1) {
+      versionSelect.remove(1);
+    }
+    
+    // Add loading message
+    versionSelect.add(loadingOption);
+  }
+  
+  // Load versions from API
+  try {
+    await loadJiraVersions();
+  } catch (error) {
+    console.error('Error in handleImportToJira:', error);
+    showError('Failed to load Jira versions. Please try again.');
+  }
 }
 
 // Handle confirm import button click
