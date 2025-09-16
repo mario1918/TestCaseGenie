@@ -600,6 +600,12 @@ function updateTestCasesTable(testCases) {
     
     tbody.innerHTML = ''; // Clear existing rows
     
+    // Update the Import to Jira button state
+    const importToJiraBtn = document.getElementById('importToJiraBtn');
+    if (importToJiraBtn) {
+      importToJiraBtn.disabled = !testCases || testCases.length === 0;
+    }
+    
     if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
       console.warn('[updateTestCasesTable] No test cases provided or empty array');
       tbody.innerHTML = `
@@ -855,10 +861,15 @@ function updateTestCasesTable(testCases) {
         // Close the modal
         addTestCaseModal.hide();
         
-        // Enable the export button if it was disabled
+        // Enable the export and import buttons if they were disabled
         const exportBtn = document.getElementById('exportToExcelBtn');
         if (exportBtn) {
           exportBtn.disabled = false;
+        }
+        
+        const importToJiraBtn = document.getElementById('importToJiraBtn');
+        if (importToJiraBtn) {
+          importToJiraBtn.disabled = false;
         }
         
         // Show success message
@@ -935,10 +946,14 @@ function updateTestCasesTable(testCases) {
         // Check if there are any test cases left
         const tbody = document.querySelector('#resultsTable tbody');
         if (tbody && tbody.rows.length === 0) {
-          // If no test cases left, disable the export button
+          // If no test cases left, disable the export and import buttons
           const exportBtn = document.getElementById('exportToExcelBtn');
           if (exportBtn) {
             exportBtn.disabled = true;
+          }
+          const importToJiraBtn = document.getElementById('importToJiraBtn');
+          if (importToJiraBtn) {
+            importToJiraBtn.disabled = true;
           }
         }
       }, 300);
@@ -1130,8 +1145,117 @@ function getPriorityBadgeClass(priority) {
   return priorityColors[normalizedPriority] || '#6C757D';
 }
 
+// Handle Import to Jira button click
+function handleImportToJira() {
+  // Show the import modal
+  const importModal = new bootstrap.Modal(document.getElementById('importToJiraModal'));
+  importModal.show();
+  
+  // TODO: Load versions and test cycles from Jira API
+  // For now, we'll use the static options defined in the HTML
+}
+
+// Handle confirm import button click
+async function handleConfirmImport() {
+  const versionSelect = document.getElementById('versionSelect');
+  const testCycleSelect = document.getElementById('testCycleSelect');
+  
+  // Validate selections
+  if (!versionSelect.value) {
+    showError('Please select a version');
+    versionSelect.focus();
+    return;
+  }
+  
+  if (!testCycleSelect.value) {
+    showError('Please select a test cycle');
+    testCycleSelect.focus();
+    return;
+  }
+  
+  // Get all test cases from the table
+  const testCases = [];
+  document.querySelectorAll('#resultsTable tbody tr').forEach(row => {
+    testCases.push({
+      id: row.getAttribute('data-test-id'),
+      title: row.cells[1].textContent.trim(),
+      steps: row.cells[2].textContent.trim(),
+      expectedResult: row.cells[3].textContent.trim(),
+      priority: row.cells[4].textContent.trim()
+    });
+  });
+  
+  if (testCases.length === 0) {
+    showError('No test cases to import');
+    return;
+  }
+  
+  // Prepare the data for import
+  const importData = {
+    version: versionSelect.value,
+    testCycle: testCycleSelect.value,
+    testCases: testCases
+  };
+  
+  try {
+    // Show loading state
+    const importBtn = document.getElementById('confirmImportBtn');
+    const originalBtnText = importBtn.innerHTML;
+    importBtn.disabled = true;
+    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Importing...';
+    
+    // TODO: Replace with actual API call to your backend
+    const response = await fetch('/api/jira/import-test-cases', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(importData)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to import test cases to Jira');
+    }
+    
+    // Show success message
+    const successToast = new bootstrap.Toast(document.getElementById('successToast'));
+    const toastBody = document.querySelector('#successToast .toast-body');
+    if (toastBody) {
+      toastBody.textContent = `Successfully imported ${testCases.length} test cases to Jira`;
+    }
+    successToast.show();
+    
+    // Close the modal
+    const importModal = bootstrap.Modal.getInstance(document.getElementById('importToJiraModal'));
+    importModal.hide();
+    
+  } catch (error) {
+    console.error('Error importing test cases to Jira:', error);
+    showError(error.message || 'Failed to import test cases to Jira');
+  } finally {
+    // Reset button state
+    const importBtn = document.getElementById('confirmImportBtn');
+    if (importBtn) {
+      importBtn.disabled = false;
+      importBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Import';
+    }
+  }
+}
+
 // Initialize event listeners
 function initializeEventListeners() {
+  // Handle Import to Jira button click
+  const importToJiraBtn = document.getElementById('importToJiraBtn');
+  if (importToJiraBtn) {
+    importToJiraBtn.addEventListener('click', handleImportToJira);
+  }
+
+  // Handle Import button in the modal
+  const confirmImportBtn = document.getElementById('confirmImportBtn');
+  if (confirmImportBtn) {
+    confirmImportBtn.addEventListener('click', handleConfirmImport);
+  }
+
   // Handle Execution Status dropdown changes
   document.addEventListener('change', (e) => {
     if (e.target.matches('.execution-status')) {

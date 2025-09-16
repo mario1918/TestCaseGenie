@@ -213,6 +213,50 @@
     </div>
   </div>
 
+  <!-- Import to Jira Modal -->
+  <div class="modal fade" id="importToJiraModal" tabindex="-1" aria-labelledby="importToJiraModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="importToJiraModalLabel">
+            <i class="bi bi-cloud-upload me-2"></i>Import Test Cases to Jira
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="importToJiraForm">
+            <div class="mb-3">
+              <label for="versionSelect" class="form-label">Version</label>
+              <select class="form-select" id="versionSelect" required>
+                <option value="" selected disabled>Select a version</option>
+                <option value="1.0.0">1.0.0</option>
+                <option value="2.0.0">2.0.0</option>
+                <!-- Will be populated dynamically -->
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="testCycleSelect" class="form-label">Test Cycle</label>
+              <select class="form-select" id="testCycleSelect" required>
+                <option value="" selected disabled>Select a test cycle</option>
+                <option value="sprint-1">Sprint 1</option>
+                <option value="sprint-2">Sprint 2</option>
+                <!-- Will be populated dynamically -->
+              </select>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x-lg me-1"></i>Close
+          </button>
+          <button type="button" class="btn btn-primary" id="confirmImportBtn">
+            <i class="bi bi-cloud-upload me-1"></i>Import
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Test Case Modal -->
   <div class="modal fade" id="addTestCaseModal" tabindex="-1" aria-labelledby="addTestCaseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
