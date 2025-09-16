@@ -428,7 +428,7 @@ function showIssueDetails(issue) {
   // Set modal title with issue key and summary
   modalTitle.innerHTML = `
     <div class="d-flex justify-content-between align-items-center w-100">
-      <span>${issue.key}: ${issue.summary || 'No summary'}</span>
+      <span>${issue.summary || 'No summary'}</span>
       <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
     </div>
   `;
@@ -444,9 +444,20 @@ function showIssueDetails(issue) {
   const description = formatText(issue.description);
   
   // Create modal body content with all issue details
+  // Format sprint name (if available)
+  const sprintName = (issue.sprint && issue.sprint !== 'N/A') ? issue.sprint : 'No Sprint';
+  
   modalBody.innerHTML = `
     <div class="row mb-3">
       <div class="col-md-6">
+        <div class="mb-3">
+          <h6 class="text-muted mb-1 small">Issue Key</h6>
+          <div><span class="badge bg-primary">${issue.key}</span></div>
+        </div>
+        <div class="mb-3">
+          <h6 class="text-muted mb-1 small">Sprint</h6>
+          <div><span class="badge bg-info text-dark">${sprintName}</span></div>
+        </div>
         <div class="mb-3">
           <h6 class="text-muted mb-1 small">Issue Type</h6>
           <div>${getIssueTypeBadge(issue.issue_type)}</div>
