@@ -1322,12 +1322,66 @@ async function handleConfirmImport() {
   // Get all test cases from the table
   const testCases = [];
   document.querySelectorAll('#resultsTable tbody tr').forEach(row => {
+    const statusBadge = row.cells[5].querySelector('.badge');
+    let statusId = -1; // Default to UNEXECUTED
+    
+    if (statusBadge) {
+      const statusText = statusBadge.textContent.trim().toUpperCase();
+      if (statusText === 'PASS') {
+        statusId = 1;
+      } else if (statusText === 'FAIL') {
+        statusId = 2;
+      } else if (statusText === 'WIP') {
+        statusId = 3;
+      } else if (statusText === 'UNEXECUTED') {
+        statusId = -1;
+      }
+    }
+    
+    // Get the issue key from the heading if available
+    const heading = document.getElementById('generatedTestCasesHeading');
+    let relatedIssues = [];
+    if (heading) {
+      const issueKeyBadge = heading.querySelector('.badge.bg-primary');
+      if (issueKeyBadge) {
+        relatedIssues = [issueKeyBadge.textContent.trim()];
+      }
+    }
+    
+    // Get components from the original issue if available
+    let components = [];
+    const currentIssue = JSON.parse(document.getElementById('issueDetailsModal')?.dataset?.currentIssue || '{}');
+    if (currentIssue && currentIssue.components && Array.isArray(currentIssue.components)) {
+      components = currentIssue.components;
+    }
+    
+    // Format steps
+    const steps = [];
+    const stepTexts = row.cells[2].textContent.trim().split('\n');
+    const expectedResults = row.cells[3].textContent.trim().split('\n');
+    
+    stepTexts.forEach((step, index) => {
+      if (step.trim()) {
+        steps.push({
+          step: step.trim(),
+          stepDescription: step.trim(),
+          data: "",
+          result: expectedResults[index] ? expectedResults[index].trim() : ""
+        });
+      }
+    });
+    
     testCases.push({
-      id: row.getAttribute('data-test-id'),
-      title: row.cells[1].textContent.trim(),
-      steps: row.cells[2].textContent.trim(),
-      expectedResult: row.cells[3].textContent.trim(),
-      priority: row.cells[4].textContent.trim()
+      summary: row.cells[1].textContent.trim(),
+      description: row.cells[1].textContent.trim(),
+      components: components,
+      related_issues: relatedIssues,
+      steps: steps,
+      version_id: parseInt(versionSelect.value),
+      cycle_id: parseInt(testCycleSelect.value),
+      execution_status: {
+        id: statusId
+      }
     });
   });
   
@@ -1338,9 +1392,9 @@ async function handleConfirmImport() {
   
   // Prepare the data for import
   const importData = {
-    version: versionSelect.value,
-    testCycle: testCycleSelect.value,
-    testCases: testCases
+    TestCases: testCases,
+    version_id: parseInt(versionSelect.value),
+    cycle_id: parseInt(testCycleSelect.value)
   };
   
   try {
@@ -1350,8 +1404,8 @@ async function handleConfirmImport() {
     importBtn.disabled = true;
     importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Importing...';
     
-    // TODO: Replace with actual API call to your backend
-    const response = await fetch('/api/jira/import-test-cases', {
+    // Call the API to import test cases
+    const response = await fetch('http://localhost:8000/api/test-cases/bulk/full-create', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1360,7 +1414,8 @@ async function handleConfirmImport() {
     });
     
     if (!response.ok) {
-      throw new Error('Failed to import test cases to Jira');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Failed to import test cases to Jira');
     }
     
     // Show success message
