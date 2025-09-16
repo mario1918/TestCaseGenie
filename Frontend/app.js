@@ -1183,13 +1183,51 @@ async function loadJiraVersions() {
   }
 }
 
+// Load Zephyr test cycles for the import dropdown
+async function loadZephyrTestCycles(versionId = -1) {
+  try {
+    const response = await fetch(`http://localhost:8000/api/zephyr/cycles?version_id=${versionId}&offset=0&limit=50`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    
+    const testCycleSelect = document.getElementById('testCycleSelect');
+    if (!testCycleSelect) return [];
+    
+    // Clear existing options except the first one (the default/placeholder)
+    while (testCycleSelect.options.length > 1) {
+      testCycleSelect.remove(1);
+    }
+    
+    // Sort test cycles by name
+    const sortedCycles = [...data.items].sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Add test cycles to the dropdown
+    sortedCycles.forEach(cycle => {
+      const option = document.createElement('option');
+      option.value = cycle.id;
+      option.textContent = cycle.name;
+      // Store the full cycle object as a data attribute for later use
+      option.dataset.cycleData = JSON.stringify(cycle);
+      testCycleSelect.appendChild(option);
+    });
+    
+    return sortedCycles;
+  } catch (error) {
+    console.error('Error loading Zephyr test cycles:', error);
+    showError('Failed to load test cycles. Please try again later.');
+    return [];
+  }
+}
+
 // Handle Import to Jira button click
 async function handleImportToJira() {
   // Show the import modal
   const importModal = new bootstrap.Modal(document.getElementById('importToJiraModal'));
   importModal.show();
   
-  // Show loading state
+  // Show loading state for versions
   const versionSelect = document.getElementById('versionSelect');
   if (versionSelect) {
     const loadingOption = document.createElement('option');
@@ -1207,12 +1245,34 @@ async function handleImportToJira() {
     versionSelect.add(loadingOption);
   }
   
-  // Load versions from API
+  // Show loading state for test cycles
+  const testCycleSelect = document.getElementById('testCycleSelect');
+  if (testCycleSelect) {
+    const loadingOption = document.createElement('option');
+    loadingOption.value = '';
+    loadingOption.textContent = 'Loading test cycles...';
+    loadingOption.disabled = true;
+    loadingOption.selected = true;
+    
+    // Clear existing options except the first one
+    while (testCycleSelect.options.length > 1) {
+      testCycleSelect.remove(1);
+    }
+    
+    // Add loading message
+    testCycleSelect.add(loadingOption);
+  }
+  
+  // Load data from APIs
   try {
-    await loadJiraVersions();
+    // Load versions and then test cycles
+    await Promise.all([
+      loadJiraVersions(),
+      loadZephyrTestCycles(-1) // Load test cycles with version_id=-1 by default
+    ]);
   } catch (error) {
     console.error('Error in handleImportToJira:', error);
-    showError('Failed to load Jira versions. Please try again.');
+    showError('Failed to load data. Please try again.');
   }
 }
 
