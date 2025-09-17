@@ -9,8 +9,8 @@ app.use(bodyParser.json());
 
 app.post("/generate", async (req, res) => {
   try {
-    const { description } = req.body;
-    const output = await generateTestCases(description);
+    const { prompt } = req.body;
+    const output = await generateTestCases(prompt);
 
     let parsed;
     try {
