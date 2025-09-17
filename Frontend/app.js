@@ -865,14 +865,23 @@ function updateTestCasesTable(testCases) {
           <td class="text-nowrap">
             ${getPriorityBadge(priority)}
           </td>
+          <td>
+            <select class="form-select form-select-sm execution-status" data-test-id="${testCaseId}">
+              <option value="UNEXECUTED">UNEXECUTED</option>
+              <option value="PASS">PASS</option>
+              <option value="FAIL">FAIL</option>
+              <option value="WIP">WIP</option>
+              <option value="BLOCKED">BLOCKED</option>
+            </select>
+          </td>
           <td class="text-end">
             <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
-                <i class="bi bi-pencil"></i> Edit
-              </button>
-              <button class="btn btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
-                <i class="bi bi-trash"></i> Delete
-              </button>
+              <button class="btn btn-sm btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
+              <i class="bi bi-trash"></i>
+            </button>
             </div>
           </td>
         `;
