@@ -208,7 +208,10 @@ function getStatusBadge(status) {
     'open': '#CECFD2',
     'in progress': '#8FB8F6',
     'closed': '#B3DF72',
-    'done': '#B3DF72'
+    'done': '#B3DF72',
+    'resolved': '#B3DF72',
+    'reopened': '#BFC1C4',
+    'in qa': '#8FB8F6'
   };
   
   const normalizedStatus = status?.toLowerCase() || '';
@@ -226,7 +229,8 @@ function getIssueTypeBadge(issueType) {
     'sub-task': '#4688EC',
     'subtask': '#4688EC',
     'test': '#8FB8F6',
-    'epic': '#BF63F3'
+    'epic': '#BF63F3',
+    'task': '#669DF1'
   };
   
   const normalizedType = issueType?.toLowerCase() || '';
