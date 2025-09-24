@@ -871,6 +871,15 @@ async function handleGenerateMoreTestCases() {
       generateMoreBtn.disabled = false;
       generateMoreBtn.innerHTML = '<i class="bi bi-magic me-1"></i> Generate More';
     }
+    
+    // Hide the loading toast
+    const loadingToastEl = document.getElementById('loadingToast');
+    if (loadingToastEl) {
+      const loadingToast = bootstrap.Toast.getInstance(loadingToastEl);
+      if (loadingToast) {
+        loadingToast.hide();
+      }
+    }
   }
 }
 
@@ -878,17 +887,28 @@ function createTestCaseRow(testCase) {
   const row = document.createElement('tr');
   row.setAttribute('data-test-case-id', testCase.id);
   
-  // Format priority badge
-  const priorityBadge = `<span class="badge ${getPriorityBadgeClass(testCase.priority)}">
+  // Format priority badge with correct class
+  const priorityClass = getPriorityBadgeClass(testCase.priority);
+  const priorityBadge = `<span class="badge bg-${priorityClass} text-white">
     ${(testCase.priority || 'Medium').toUpperCase()}
   </span>`;
   
-  // Format steps with numbering
+  // Format steps with proper numbering
   let formattedSteps = 'N/A';
   if (testCase.steps) {
     const stepsStr = String(testCase.steps);
-    const stepLines = stepsStr.split('\n').filter(step => step.trim() !== '');
-    formattedSteps = stepLines.map((step, i) => `${i + 1}. ${step.trim()}`).join('<br>');
+    // Split by newlines and clean up each line
+    const stepLines = stepsStr.split('\n')
+      .map(step => {
+        // Remove any existing numbering pattern (1., 2., etc.) at the start of the line
+        return step.replace(/^\s*\d+\.?\s*/, '').trim();
+      })
+      .filter(step => step !== ''); // Remove any empty lines
+    
+    // Add numbering back if there are any steps
+    if (stepLines.length > 0) {
+      formattedSteps = stepLines.map((step, i) => `${i + 1}. ${step}`).join('<br>');
+    }
   }
   
   // Format expected results
@@ -998,12 +1018,10 @@ function updateTestCasesTable(testCases, append = false) {
     // Process each test case
     testCases.forEach((testCase, index) => {
       try {
-        // If appending, update the ID to continue the sequence
-        if (append) {
-          testCase.id = `test-case-${highestId + index + 1}`;
-        } else {
-          // For new test cases, ensure they have proper IDs
-          testCase.id = testCase.id || `test-case-${index + 1}`;
+        // Preserve the original ID from the API response
+        if (!testCase.id) {
+          // Only generate a new ID if one doesn't exist
+          testCase.id = `test-case-${append ? highestId + index + 1 : index + 1}`;
         }
         
         // Create and append the row
@@ -1140,28 +1158,6 @@ function processTestCases(testCases, tbody, append = false) {
             case 'BLOCKED': return '#6f42c1'; // Purple
             default: return '#6c757d'; // Gray for UNEXECUTED
           }
-        }
-        
-        // Function to create priority badge
-        function createPriorityBadge(priority) {
-          const priorityLower = priority ? priority.toLowerCase() : 'medium';
-          let badgeClass = 'secondary';
-          
-          switch(priorityLower) {
-            case 'high':
-              badgeClass = 'bg-danger';
-              break;
-            case 'medium':
-              badgeClass = 'bg-warning';
-              break;
-            case 'low':
-              badgeClass = 'bg-success';
-              break;
-            default:
-              badgeClass = 'bg-secondary';
-          }
-          
-          return `<span class="badge ${badgeClass}">${priority || 'Medium'}</span>`;
         }
         
         // Add styles for the execution status dropdown
@@ -2466,13 +2462,3 @@ document.getElementById("generateBtn")?.addEventListener("click", async () => {
   }
 });
 
-// Helper function to get badge class based on priority
-function getPriorityBadgeClass(priority) {
-  if (!priority) return 'secondary';
-  const priorityLower = priority.toLowerCase();
-  return {
-    'high': 'danger',
-    'medium': 'warning',
-    'low': 'success'
-  }[priorityLower] || 'secondary';
-}
