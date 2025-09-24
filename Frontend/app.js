@@ -3,6 +3,13 @@ const THEME_KEY = 'preferred-theme';
 const THEME_LIGHT = 'light';
 const THEME_DARK = 'dark';
 
+// Conversation history for maintaining context between test case generations
+let conversationHistory = [];
+
+// Pagination
+let currentStartAt = 0;
+const MAX_RESULTS = 50; // Default number of results per page
+
 // Initialize theme from localStorage or system preference
 function initTheme() {
   const savedTheme = localStorage.getItem(THEME_KEY);
@@ -195,11 +202,6 @@ async function loadJiraSprints() {
     }
   }
 }
-
-// Global variables for pagination
-let currentStartAt = 0;
-const MAX_RESULTS = 5;
-let totalResults = 0;
 
 // Helper function to format status badge
 function getStatusBadge(status) {
@@ -520,20 +522,25 @@ function showIssueDetails(issue) {
 }
 
 // Generate test cases from issue
-async function generateTestCasesFromIssue(issue) {
+async function generateTestCasesFromIssue(issue, isAdditional = false, existingTestCases = []) {
   console.log('Starting test case generation for issue:', issue.key);
   
   try {
+    // If this is not an additional generation, reset the conversation history
+    if (!isAdditional) {
+      conversationHistory = [];
+    }
     
-    // Don't show loading toast here - it's now handled in the click handler
-    
-    // Prepare the request payload with the full issue description
+    // Prepare the request payload with the full issue description, existing test cases, and conversation history
     const payload = {
-      prompt: issue.description || '', // Send the full description as prompt
+      prompt: issue.description || '',
       issue_key: issue.key,
       summary: issue.summary || '',
       issue_type: issue.issue_type || '',
-      status: issue.status || ''
+      status: issue.status || '',
+      existing_test_cases: existingTestCases,
+      conversation_history: conversationHistory,
+      is_additional_generation: isAdditional
     };
     
     console.log('Sending request to generate test cases with payload:', payload);
@@ -572,10 +579,47 @@ async function generateTestCasesFromIssue(issue) {
       throw new Error('No test cases were generated. The response was empty or in an unexpected format.');
     }
     
+    // Update conversation history with the new interaction
+    if (isAdditional) {
+      // For additional generations, we want to maintain the full context
+      conversationHistory.push({
+        role: 'user',
+        content: issue.description || ''
+      });
+      
+      if (result.conversation_history) {
+        // If the server returns updated conversation history, use that
+        conversationHistory = result.conversation_history;
+      } else {
+        // Otherwise, add the AI's response to the history
+        conversationHistory.push({
+          role: 'assistant',
+          content: JSON.stringify(testCases)
+        });
+      }
+    }
+    
     console.log('Generated test cases:', testCases);
     
+    // Update the conversation history with the last interaction
+    conversationHistory.push({
+      role: 'user',
+      content: issue.description || ''
+    });
+    
+    if (result.conversation_history) {
+      // If the server returns updated conversation history, use that
+      conversationHistory = result.conversation_history;
+    } else {
+      // Otherwise, add the AI's response to the history
+      conversationHistory.push({
+        role: 'assistant',
+        content: JSON.stringify(testCases)
+      });
+    }
+    
     // Update the test cases table
-    updateTestCasesTable(testCases);
+    updateTestCasesTable(testCases, isAdditional);
     
     // Update the heading with issue key and sprint badges
     const heading = document.getElementById('generatedTestCasesHeading');
@@ -604,99 +648,488 @@ async function generateTestCasesFromIssue(issue) {
   } catch (error) {
     console.error('Error generating test cases:', error);
     
-    // Show error message
-    const errorToastEl = document.getElementById('errorToast');
-    const errorToast = bootstrap.Toast.getOrCreateInstance(errorToastEl);
-    const errorToastBody = errorToastEl.querySelector('.toast-body');
-    errorToastBody.textContent = error.message || 'Failed to generate test cases. Please check the console for details.';
-    errorToast.show();
+    try {
+      // Safely show error message if toast elements exist
+      const errorToastEl = document.getElementById('errorToast');
+      if (errorToastEl) {
+        const errorToast = bootstrap.Toast.getOrCreateInstance(errorToastEl);
+        const errorToastBody = errorToastEl.querySelector('.toast-body');
+        if (errorToastBody) {
+          errorToastBody.textContent = error.message || 'Failed to generate test cases. Please check the console for details.';
+          errorToast.show();
+        } else {
+          console.warn('Could not find error toast body element');
+        }
+      } else {
+        console.warn('Could not find error toast element');
+      }
+    } catch (uiError) {
+      console.error('Error showing error message:', uiError);
+    }
     
     // Re-throw the error for further handling if needed
     throw error;
   }
 }
 
-// Update the test cases table with generated test cases
-function updateTestCasesTable(testCases) {
+// Handle generating more test cases
+async function handleGenerateMoreTestCases() {
+  console.log('=== Starting handleGenerateMoreTestCases ===');
+  const generateMoreBtn = document.getElementById('generateMoreBtn');
+  if (!generateMoreBtn) {
+    console.error('❌ Generate More button not found in the DOM');
+    return false;
+  }
+  
+  console.log('✅ Generate More button found');
+  
   try {
-    console.log('[updateTestCasesTable] Starting to update table with test cases:', testCases);
+    console.log('Getting current issue details...');
+    // Get the current issue key from the heading
+    console.log('🔍 Looking for test cases heading...');
+    const heading = document.getElementById('generatedTestCasesHeading');
+    if (!heading) {
+      const errorMsg = '❌ Could not find test cases section';
+      console.error(errorMsg);
+      console.log('Available elements with ID "generatedTestCasesHeading":', document.querySelectorAll('#generatedTestCasesHeading'));
+      throw new Error(errorMsg);
+    }
+    console.log('✅ Found test cases heading:', heading.textContent);
     
+    // Get the issue key from the heading
+    console.log('🔍 Looking for issue key badge...');
+    const badge = heading.querySelector('.badge.bg-primary');
+    if (!badge) {
+      const errorMsg = '❌ Could not find issue key in the test cases section';
+      console.error(errorMsg);
+      console.log('Available badges in heading:', heading.querySelectorAll('*'));
+      throw new Error(errorMsg);
+    }
+    
+    const issueKey = badge.textContent.trim();
+    if (!issueKey) {
+      const errorMsg = 'Issue key is empty';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    console.log('Found issue key:', issueKey);
+    
+    // Show loading state
+    generateMoreBtn.disabled = true;
+    generateMoreBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Generating...';
+    
+    // Show loading toast
+    const loadingToastEl = document.getElementById('loadingToast');
+    if (loadingToastEl) {
+      const loadingToast = bootstrap.Toast.getOrCreateInstance(loadingToastEl);
+      const loadingToastBody = loadingToastEl.querySelector('.toast-body');
+      if (loadingToastBody) {
+        loadingToastBody.textContent = 'Generating additional test cases...';
+      }
+      loadingToast.show();
+    }
+    
+    // Try to get the issue from the issue details modal first
+    let issueRow = null;
+    const modal = document.getElementById('issueDetailsModal');
+    if (modal) {
+      const modalIssueKey = modal.getAttribute('data-current-issue') ? 
+        JSON.parse(modal.getAttribute('data-current-issue'))?.key : null;
+      
+      if (modalIssueKey === issueKey) {
+        console.log('Found issue in modal');
+        // Create a dummy row with the data from the modal
+        const issueData = JSON.parse(modal.getAttribute('data-current-issue'));
+        issueRow = {
+          getAttribute: (attr) => {
+            switch(attr) {
+              case 'data-summary': return issueData.summary || '';
+              case 'data-description': return issueData.description || '';
+              case 'data-issue-type': return issueData.issue_type || 'Task';
+              case 'data-status': return issueData.status || 'To Do';
+              case 'data-sprint': return issueData.sprint || '';
+              default: return '';
+            }
+          }
+        };
+      }
+    }
+    
+    // If not found in the modal, try to find it in the issues table
+    if (!issueRow) {
+      console.log('Issue not found in modal, searching in tables...');
+      issueRow = document.querySelector(`#jiraIssuesTable tr[data-issue-key="${issueKey}"]`);
+      
+      // If not found in the main table, try to find it in any other tables
+      if (!issueRow) {
+        console.log('Issue not found in main table, searching in all tables...');
+        issueRow = document.querySelector(`tr[data-issue-key="${issueKey}"]`);
+      }
+    }
+    
+    // If we still can't find the issue, try to get it from the issue details modal
+    if (!issueRow) {
+      const modal = document.getElementById('issueDetailsModal');
+      if (modal) {
+        const modalIssueKey = modal.getAttribute('data-issue-key');
+        if (modalIssueKey === issueKey) {
+          // Get data from the modal
+          issueRow = {
+            getAttribute: (attr) => {
+              switch(attr) {
+                case 'data-summary': return modal.querySelector('.issue-summary')?.textContent || '';
+                case 'data-description': return modal.querySelector('.issue-description')?.textContent || '';
+                case 'data-issue-type': return modal.querySelector('.issue-type')?.textContent || '';
+                case 'data-status': return modal.querySelector('.issue-status')?.textContent || '';
+                case 'data-sprint': return modal.querySelector('.issue-sprint')?.textContent || '';
+                default: return '';
+              }
+            }
+          };
+        }
+      }
+    }
+    
+    if (!issueRow) {
+      throw new Error(`Could not find details for issue ${issueKey}. Please make sure the issue is visible in the table.`);
+    }
+    
+    // Get issue data with fallbacks
+    const getSafeAttribute = (element, attr, defaultValue = '') => {
+      try {
+        return element?.getAttribute?.(attr) || defaultValue;
+      } catch (e) {
+        console.warn(`Error getting attribute ${attr}:`, e);
+        return defaultValue;
+      }
+    };
+    
+    const issue = {
+      key: issueKey,
+      summary: getSafeAttribute(issueRow, 'data-summary', issueKey),
+      description: getSafeAttribute(issueRow, 'data-description', ''),
+      issue_type: getSafeAttribute(issueRow, 'data-issue-type', 'Task'),
+      status: getSafeAttribute(issueRow, 'data-status', 'To Do'),
+      sprint: getSafeAttribute(issueRow, 'data-sprint', '')
+    };
+    
+    console.log('Using issue data:', issue);
+    
+    // Get existing test cases from the table
+    const existingTestCases = [];
+    const testCaseRows = document.querySelectorAll('#resultsTable tbody tr');
+    
+    if (testCaseRows.length === 0) {
+      console.warn('No existing test cases found in the table');
+    } else {
+      console.log(`Found ${testCaseRows.length} existing test cases`);
+      testCaseRows.forEach((row, index) => {
+        try {
+          const testCase = {
+            id: row.getAttribute('data-test-id') || `temp-${Date.now()}-${index}`,
+            title: row.querySelector('.test-case')?.textContent?.trim() || `Test Case ${index + 1}`,
+            description: row.querySelector('.test-description')?.textContent?.trim() || '',
+            priority: row.querySelector('.test-priority')?.textContent?.trim() || 'Medium',
+            steps: row.querySelector('.test-steps')?.textContent?.trim() || '',
+            expectedResult: row.querySelector('.expected-result')?.textContent?.trim() || ''
+          };
+          existingTestCases.push(testCase);
+        } catch (error) {
+          console.error('Error parsing test case row:', error);
+        }
+      });
+    }
+    
+    console.log('Existing test cases to include:', existingTestCases);
+    
+    // Generate more test cases with append mode and include existing test cases
+    const newTestCases = await generateTestCasesFromIssue(issue, true, existingTestCases);
+    
+    if (newTestCases && newTestCases.length > 0) {
+      // Show success message
+      const successToastEl = document.getElementById('successToast');
+      const successToast = bootstrap.Toast.getOrCreateInstance(successToastEl);
+      const successToastBody = successToastEl.querySelector('.toast-body');
+      successToastBody.textContent = `Successfully generated ${newTestCases.length} more test cases.`;
+      successToast.show();
+    }
+    
+  } catch (error) {
+    console.error('Error generating more test cases:', error);
+    
+    // Show error message
+    const errorToastEl = document.getElementById('errorToast');
+    const errorToast = bootstrap.Toast.getOrCreateInstance(errorToastEl);
+    const errorToastBody = errorToastEl.querySelector('.toast-body');
+    errorToastBody.textContent = error.message || 'Failed to generate more test cases. Please check the console for details.';
+    errorToast.show();
+    
+  } finally {
+    // Reset button state
+    if (generateMoreBtn) {
+      generateMoreBtn.disabled = false;
+      generateMoreBtn.innerHTML = '<i class="bi bi-magic me-1"></i> Generate More';
+    }
+  }
+}
+
+function createTestCaseRow(testCase) {
+  const row = document.createElement('tr');
+  row.setAttribute('data-test-case-id', testCase.id);
+  
+  // Format priority badge
+  const priorityBadge = `<span class="badge ${getPriorityBadgeClass(testCase.priority)}">
+    ${(testCase.priority || 'Medium').toUpperCase()}
+  </span>`;
+  
+  // Format steps with numbering
+  let formattedSteps = 'N/A';
+  if (testCase.steps) {
+    const stepsStr = String(testCase.steps);
+    const stepLines = stepsStr.split('\n').filter(step => step.trim() !== '');
+    formattedSteps = stepLines.map((step, i) => `${i + 1}. ${step.trim()}`).join('<br>');
+  }
+  
+  // Format expected results
+  const formattedExpectedResults = testCase.expectedResult 
+    ? String(testCase.expectedResult).replace(/\n/g, '<br>') 
+    : 'N/A';
+  
+  // Create table cells in the correct order to match table headers
+  const cells = [
+    { class: 'text-nowrap', content: testCase.id || 'N/A' },
+    { class: 'wrap-text', content: testCase.title || 'No title' },
+    { class: 'wrap-text', content: formattedSteps },
+    { class: 'wrap-text', content: formattedExpectedResults },
+    { class: 'text-nowrap', content: priorityBadge },
+    { 
+      class: 'text-nowrap', 
+      content: `
+        <select class="form-select form-select-sm execution-status" 
+                data-test-id="${testCase.id}" 
+                style="background-color: ${getStatusColor(testCase.executionStatus || 'UNEXECUTED')}; 
+                       color: white; 
+                       border: 1px solid ${getStatusColor(testCase.executionStatus || 'UNEXECUTED')}; 
+                       border-radius: 0.25rem;
+                       padding: 0.25rem 0.5rem;
+                       font-size: 0.75rem;
+                       width: 120px;">
+          <option value="UNEXECUTED" ${(testCase.executionStatus || 'UNEXECUTED') === 'UNEXECUTED' ? 'selected' : ''}>UNEXECUTED</option>
+          <option value="PASS" ${testCase.executionStatus === 'PASS' ? 'selected' : ''}>PASS</option>
+          <option value="FAIL" ${testCase.executionStatus === 'FAIL' ? 'selected' : ''}>FAIL</option>
+          <option value="BLOCKED" ${testCase.executionStatus === 'BLOCKED' ? 'selected' : ''}>BLOCKED</option>
+        </select>
+      `
+    },
+    { 
+      class: 'text-nowrap', 
+      content: createActionButtons(testCase.id) 
+    }
+  ];
+  
+  // Add each cell to the row
+  cells.forEach(cellData => {
+    const cell = document.createElement('td');
+    cell.className = cellData.class;
+    cell.innerHTML = cellData.content;
+    row.appendChild(cell);
+  });
+  
+  return row;
+}
+
+// Helper function to get color for execution status
+function getStatusColor(status) {
+  switch(status) {
+    case 'PASS': return '#198754'; // Green
+    case 'FAIL': return '#dc3545'; // Red
+    case 'WIP': return '#ffc107';  // Yellow
+    case 'BLOCKED': return '#6f42c1'; // Purple
+    default: return '#6c757d'; // Gray for UNEXECUTED
+  }
+}
+
+function createActionButtons(testCaseId) {
+  return `
+    <div class="btn-group btn-group-sm" role="group">
+      <button type="button" class="btn btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
+        <i class="bi bi-pencil"></i>
+      </button>
+      <button type="button" class="btn btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
+        <i class="bi bi-trash"></i>
+      </button>
+    </div>
+  `;
+}
+
+function updateTestCasesTable(testCases, append = false) {
+  try {
     const tbody = document.querySelector('#resultsTable tbody');
     if (!tbody) {
-      console.error('[updateTestCasesTable] Error: Test cases table body not found');
-      return;
+      console.error('Table body not found');
+      return false;
     }
-    
-    tbody.innerHTML = ''; // Clear existing rows
-    
-    // Update the Import to Jira button state
-    const importToJiraBtn = document.getElementById('importToJiraBtn');
-    if (importToJiraBtn) {
-      importToJiraBtn.disabled = !testCases || testCases.length === 0;
-    }
-    
-    if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
-      console.warn('[updateTestCasesTable] No test cases provided or empty array');
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="7" class="text-center py-4">
-            <div class="text-muted">No test cases were generated. Please try again.</div>
-          </td>
-        </tr>`;
-      return;
-    }
-    
-    // Scroll to position the test cases in the middle of the screen
-    setTimeout(() => {
-      const anchor = document.getElementById('testCasesAnchor');
-      if (anchor) {
-        // Calculate the position to scroll to (70% from the top of the viewport)
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-        const anchorPosition = anchor.getBoundingClientRect().top + window.pageYOffset;
-        const scrollTo = anchorPosition - (viewportHeight * 0.3); // Position at 30% from top (showing 70% below)
-        
-        // Smooth scroll to the calculated position
-        window.scrollTo({
-          top: scrollTo,
-          behavior: 'smooth'
-        });
+  
+  // If appending, find the highest existing test case number
+  let highestId = 0;
+  if (append) {
+    document.querySelectorAll('#resultsTable tbody tr').forEach(row => {
+      const id = row.getAttribute('data-test-id');
+      if (id) {
+        const match = id.match(/\d+$/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > highestId) highestId = num;
+        }
       }
-    }, 100);
+    });
+  } else {
+    // Clear existing rows if not appending
+    tbody.innerHTML = '';
+  }
+  
+    console.log('[updateTestCasesTable] Starting to update table. Append mode:', append, 'Highest ID:', highestId);
     
-    // Create table rows for each test case
+    if (!Array.isArray(testCases)) {
+      throw new Error('testCases must be an array');
+    }
+    
+    // Process each test case
     testCases.forEach((testCase, index) => {
       try {
-        console.log(`[updateTestCasesTable] Processing test case ${index + 1}:`, testCase);
-        
-        const row = document.createElement('tr');
-        row.className = 'fade-in';
-        row.style.animationDelay = `${index * 50}ms`;
-        
-        // Extract test case data with fallbacks
-        const testCaseId = testCase.id || testCase.testCaseId || `TC-${index + 1}`;
-        const testCaseTitle = testCase.title || testCase.name || `Test Case ${index + 1}`;
-        const priority = testCase.priority || 'medium';
-        const executionStatus = testCase.executionStatus || 'UNEXECUTED';
-        
-        // Format steps - handle both string and array formats
-        let steps = 'N/A';
-        if (Array.isArray(testCase.steps)) {
-          steps = testCase.steps.map((step, i) => `${i + 1}. ${step}`).join('<br>');
-        } else if (testCase.steps) {
-          steps = testCase.steps.toString().replace(/\n/g, '<br>');
+        // If appending, update the ID to continue the sequence
+        if (append) {
+          testCase.id = `test-case-${highestId + index + 1}`;
+        } else {
+          // For new test cases, ensure they have proper IDs
+          testCase.id = testCase.id || `test-case-${index + 1}`;
         }
         
-        // Format expected results - handle both string and array formats
-        let expectedResults = 'N/A';
-        if (Array.isArray(testCase.expectedResults)) {
-          expectedResults = testCase.expectedResults.join('<br>');
-        } else if (testCase.expectedResults) {
-          expectedResults = testCase.expectedResults.toString().replace(/\n/g, '<br>');
-        } else if (testCase.expectedResult) {
-          expectedResults = Array.isArray(testCase.expectedResult) 
-            ? testCase.expectedResult.join('<br>')
-            : testCase.expectedResult.toString().replace(/\n/g, '<br>');
-        }
+        // Create and append the row
+        const row = createTestCaseRow(testCase);
+        tbody.appendChild(row);
+      } catch (error) {
+        console.error(`Error processing test case ${index}:`, error);
+      }
+    });
+    
+    console.log(`[updateTestCasesTable] Successfully processed ${testCases.length} test cases`);
+    
+  } catch (error) {
+    console.error('Error in updateTestCasesTable:', error);
+    throw error;
+  }
+}
+
+// Update the Import to Jira button state
+function updateImportButtonState() {
+  const importToJiraBtn = document.getElementById('importToJiraBtn');
+  if (importToJiraBtn) {
+    const hasTestCases = document.querySelectorAll('#resultsTable tbody tr').length > 0;
+    importToJiraBtn.disabled = !hasTestCases;
+  }
+  return true;
+}
+
+// Handle empty test cases
+function handleEmptyTestCases(tbody) {
+  if (!tbody) return true;
+  
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="7" class="text-center py-4">
+        <div class="text-muted">No test cases were generated. Please try again.</div>
+      </td>
+    </tr>`;
+  
+  // Update the import button state
+  updateImportButtonState();
+  return true;
+}
+
+// Scroll to position the test cases in the middle of the screen
+function scrollToTestCases() {
+  const anchor = document.getElementById('testCasesAnchor');
+  if (anchor) {
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const anchorPosition = anchor.getBoundingClientRect().top + window.pageYOffset;
+    const scrollTo = anchorPosition - (viewportHeight * 0.3); // Position at 30% from top
+    
+    // Smooth scroll to the calculated position
+    window.scrollTo({
+      top: scrollTo,
+      behavior: 'smooth'
+    });
+  }
+}
+
+// Process test cases and update the UI
+function processTestCases(testCases, tbody, append = false) {
+  console.log('[processTestCases] Raw test cases data:', JSON.stringify(testCases, null, 2));
+  
+  // Handle case where test cases are nested in a testCases property
+  if (testCases && testCases.testCases && Array.isArray(testCases.testCases)) {
+    console.log('[processTestCases] Found test cases in testCases property');
+    testCases = testCases.testCases;
+  } else if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
+    console.warn('[processTestCases] No test cases provided or empty array');
+    handleEmptyTestCases(tbody);
+    return;
+  }
+
+  // Call scroll function after a short delay
+  setTimeout(scrollToTestCases, 100);
+  
+  // Clear existing rows if not appending
+  if (!append) {
+    tbody.innerHTML = '';
+  }
+  
+  // Create table rows for each test case
+  testCases.forEach((testCase, index) => {
+    try {
+      console.log(`[processTestCases] Processing test case ${index + 1}:`, testCase);
+      
+      // Log the raw test case object before normalization
+      console.log(`[processTestCases] Raw test case ${index}:`, testCase);
+      
+      // Normalize the test case data with proper fallbacks
+      const normalizedTestCase = {
+        id: testCase.id || testCase.testCaseId || `TC-${append ? tbody.children.length + index + 1 : index + 1}`,
+        title: testCase.title || testCase.name || `Test Case ${index + 1}`,
+        priority: (testCase.priority || 'medium').toLowerCase(),
+        executionStatus: (testCase.executionStatus || 'UNEXECUTED').toUpperCase(),
+        // Handle both steps as string and array
+        steps: Array.isArray(testCase.steps) ? testCase.steps.join('\n') : (testCase.steps || testCase.step || ''),
+        expectedResult: testCase.expectedResult || testCase.expectedResults || ''
+      };
+      
+      console.log(`[processTestCases] Normalized test case ${index}:`, normalizedTestCase);
+      
+      console.log(`[processTestCases] Normalized test case ${index}:`, normalizedTestCase);
+      
+      const row = document.createElement('tr');
+      row.className = 'fade-in';
+      row.setAttribute('data-test-case-id', normalizedTestCase.id);
+      row.style.animationDelay = `${index * 50}ms`;
+      
+      // Format steps - convert newlines to <br> and ensure proper numbering
+      let formattedSteps = 'N/A';
+      if (normalizedTestCase.steps) {
+        // Convert to string in case it's a number or other type
+        const stepsStr = String(normalizedTestCase.steps);
+        // Split by newlines, filter out empty lines, and add numbering
+        const stepLines = stepsStr.split('\n').filter(step => step.trim() !== '');
+        formattedSteps = stepLines.map((step, i) => `${i + 1}. ${step.trim()}`).join('<br>');
+      }
+      
+      // Format expected results - ensure proper line breaks
+      let formattedExpectedResults = 'N/A';
+      if (normalizedTestCase.expectedResult) {
+        // Convert to string and replace newlines with <br>
+        formattedExpectedResults = String(normalizedTestCase.expectedResult).replace(/\n/g, '<br>');
+      }
         
         // Function to get status color
         function getStatusColor(status) {
@@ -741,31 +1174,43 @@ function updateTestCasesTable(testCases) {
           </style>
         `;
         
-        // Create the row content
+        // Create the row content with proper data mapping
+        // Make sure the order of <td> elements matches the <th> order in the HTML
         row.innerHTML = `
-          <td class="text-nowrap">${testCaseId}</td>
-          <td class="wrap-text">${testCaseTitle}</td>
-          <td class="wrap-text">${steps}</td>
-          <td class="wrap-text">${expectedResults}</td>
-          <td class="text-nowrap">${createPriorityBadge(testCase.priority || 'medium')}</td>
+          <td class="text-nowrap">${normalizedTestCase.id}</td>
+          <td class="wrap-text">${normalizedTestCase.title}</td>
+          <td class="wrap-text">${formattedSteps}</td>
+          <td class="wrap-text">${formattedExpectedResults}</td>
           <td class="text-nowrap">
-            ${statusStyles}
+            <span class="badge ${getPriorityBadgeClass(normalizedTestCase.priority)}">
+              ${normalizedTestCase.priority.toUpperCase()}
+            </span>
+          </td>
+          <td class="text-nowrap">
             <select class="form-select form-select-sm execution-status" 
-                    data-test-id="${testCaseId}" 
-                    style="background-color: ${executionStatus === 'UNEXECUTED' ? '#ffffff' : getStatusColor(executionStatus)}; color: ${executionStatus === 'UNEXECUTED' ? '#000000' : 'white'}; transition: background-color 0.3s ease, color 0.3s ease;">
-              <option value="UNEXECUTED" ${executionStatus === 'UNEXECUTED' ? 'selected' : ''} style="background-color: #ffffff; color: #000000;">UNEXECUTED</option>
-              <option value="PASS" ${executionStatus === 'PASS' ? 'selected' : ''} style="background-color: #198754; color: white;">PASS</option>
-              <option value="FAIL" ${executionStatus === 'FAIL' ? 'selected' : ''} style="background-color: #dc3545; color: white;">FAIL</option>
-              <option value="BLOCKED" ${executionStatus === 'BLOCKED' ? 'selected' : ''} style="background-color: #4a2d82; color: white;">BLOCKED</option>
+                    data-test-id="${normalizedTestCase.id}" 
+                    style="background-color: ${getStatusColor(normalizedTestCase.executionStatus)}; 
+                           color: white; 
+                           border: 1px solid ${getStatusColor(normalizedTestCase.executionStatus)}; 
+                           border-radius: 0.25rem;
+                           padding: 0.25rem 0.5rem;
+                           font-size: 0.75rem;
+                           width: 120px;">
+              <option value="UNEXECUTED" ${normalizedTestCase.executionStatus === 'UNEXECUTED' ? 'selected' : ''}>UNEXECUTED</option>
+              <option value="PASS" ${normalizedTestCase.executionStatus === 'PASS' ? 'selected' : ''}>PASS</option>
+              <option value="FAIL" ${normalizedTestCase.executionStatus === 'FAIL' ? 'selected' : ''}>FAIL</option>
+              <option value="BLOCKED" ${normalizedTestCase.executionStatus === 'BLOCKED' ? 'selected' : ''}>BLOCKED</option>
             </select>
           </td>
           <td class="text-nowrap">
-            <button class="btn btn-sm btn-outline-primary edit-test-case" data-test-id="${testCaseId}" title="Edit test case">
-              <i class="bi bi-pencil"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-danger delete-test-case" data-test-id="${testCaseId}" title="Delete test case">
-              <i class="bi bi-trash"></i>
-            </button>
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-primary edit-test-case" data-test-id="${normalizedTestCase.id}" title="Edit test case">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button type="button" class="btn btn-outline-danger delete-test-case" data-test-id="${normalizedTestCase.id}" title="Delete test case">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
           </td>
         `;
         
@@ -1090,60 +1535,60 @@ function updateTestCasesTable(testCases) {
           
           // Remove the row after the fade out completes
           setTimeout(() => {
-            row.remove();
-            
-            // Update the test case count
-            const testCaseCount = document.getElementById('testCaseCount');
-            if (testCaseCount) {
-              const currentCount = parseInt(testCaseCount.textContent) || 0;
-              testCaseCount.textContent = Math.max(0, currentCount - 1);
+            try {
+              row.remove();
               
-              // If no test cases left, show empty state
-              if (currentCount - 1 <= 0) {
-                tbody.innerHTML = `
-                  <tr>
-                    <td colspan="6" class="text-center py-4">
-                      <div class="text-muted">No test cases generated yet.</div>
-                    </td>
-                  </tr>`;
+              // Update the test case count
+              const testCaseCount = document.getElementById('testCaseCount');
+              if (testCaseCount) {
+                const currentCount = parseInt(testCaseCount.textContent) || 0;
+                testCaseCount.textContent = Math.max(0, currentCount - 1);
+                
+                // If no test cases left, show empty state
+                if (currentCount - 1 <= 0) {
+                  const tbody = document.querySelector('#resultsTable tbody');
+                  if (tbody) {
+                    tbody.innerHTML = `
+                      <tr>
+                        <td colspan="6" class="text-center py-4">
+                          <div class="text-muted">No test cases generated yet.</div>
+                        </td>
+                      </tr>`;
+                  }
+                }
               }
-            }
-            
-            // Show a success toast
-            const successToastEl = document.getElementById('successToast');
-            if (successToastEl) {
-              const successToast = bootstrap.Toast.getOrCreateInstance(successToastEl);
-              const toastBody = successToastEl.querySelector('.toast-body');
-              if (toastBody) {
-                toastBody.textContent = 'Test case deleted successfully';
+              
+              // Show a success toast
+              const successToastEl = document.getElementById('successToast');
+              if (successToastEl) {
+                const successToast = bootstrap.Toast.getOrCreateInstance(successToastEl);
+                const toastBody = successToastEl.querySelector('.toast-body');
+                if (toastBody) {
+                  toastBody.textContent = 'Test case deleted successfully';
+                }
+                successToast.show();
               }
-              successToast.show();
+            } catch (error) {
+              console.error('Error deleting test case:', error);
             }
           }, 300);
         }
       });
     });
-    
+
     // Scroll to the test cases section
-    setTimeout(() => {
-      testCasesSection?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-    
-  } catch (error) {
-    console.error('Error updating test cases table:', error);
-    
-    // Show error in the table
-    const tbody = document.querySelector('#resultsTable tbody');
-    if (tbody) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="5" class="text-center py-4 text-danger">
-            <div>Error displaying test cases</div>
-            <div class="small text-muted">${error.message || 'Please check the console for details'}</div>
-          </td>
-        </tr>`;
+    try {
+      setTimeout(() => {
+        const testCasesSection = document.getElementById('testCasesSection');
+        if (testCasesSection) {
+          testCasesSection.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+      return true;
+    } catch (error) {
+      console.error('Error in scroll operation:', error);
+      return true; // Continue even if scroll fails
     }
-  }
 }
 
 // Helper function to get priority badge HTML
@@ -1168,19 +1613,19 @@ function getPriorityBadge(priority) {
 
 // Helper function to get badge class for test case priority
 function getPriorityBadgeClass(priority) {
-  const priorityColors = {
-    'critical': '#E2483D',
-    'highest': '#E2483D',
-    'high': '#E2483D',
-    'major': '#F68909',
-    'medium': '#F68909',
-    'minor': '#4688EC',
-    'low': '#4688EC',
-    'lowest': '#6C757D'
+  const priorityClasses = {
+    'critical': 'danger',
+    'highest': 'danger',
+    'high': 'danger',
+    'major': 'warning',
+    'medium': 'warning',
+    'minor': 'info',
+    'low': 'info',
+    'lowest': 'secondary'
   };
   
   const normalizedPriority = priority?.toLowerCase() || '';
-  return priorityColors[normalizedPriority] || '#6C757D';
+  return priorityClasses[normalizedPriority] || 'secondary';
 }
 
 // Load Jira versions for the import dropdown
@@ -1458,6 +1903,7 @@ async function handleConfirmImport() {
 
 // Initialize event listeners
 function initializeEventListeners() {
+  console.log('Initializing event listeners...');
   // Handle Import to Jira button click
   const importToJiraBtn = document.getElementById('importToJiraBtn');
   if (importToJiraBtn) {
@@ -1538,6 +1984,66 @@ function initializeEventListeners() {
           errorToastBody.textContent = 'Failed to load issue details. Please try again.';
           errorToast.show();
         }
+      }
+    }
+  });
+  
+  // Use event delegation for the Generate More button since it might be dynamically added
+  document.addEventListener('click', async function(e) {
+    console.log('📌 Document click event detected');
+    const generateMoreBtn = e.target.closest('#generateMoreBtn');
+    
+    if (!generateMoreBtn) {
+      console.log('Click was not on Generate More button');
+      return;
+    }
+    
+    console.log('✅ Generate More button clicked (delegated)');
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Disable button and show loading state
+    console.log('🔄 Updating button state to loading...');
+    const originalHtml = generateMoreBtn.innerHTML;
+    generateMoreBtn.disabled = true;
+    generateMoreBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Generating...';
+    
+    console.log('Button state updated, calling handleGenerateMoreTestCases...');
+    
+    try {
+      await handleGenerateMoreTestCases();
+    } catch (error) {
+      console.error('Error in handleGenerateMoreTestCases:', error);
+      
+      // Show error message to the user
+      let errorMessage = error.message || 'Failed to generate more test cases.';
+      
+      // More specific error messages for common issues
+      if (errorMessage.includes('Could not find details for issue')) {
+        errorMessage = `Could not find the issue details. Please make sure the issue is still visible on the page.`;
+      } else if (errorMessage.includes('NetworkError')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      }
+      
+      const errorToastEl = document.getElementById('errorToast');
+      if (errorToastEl) {
+        const errorToast = bootstrap.Toast.getOrCreateInstance(errorToastEl);
+        const errorToastBody = errorToastEl.querySelector('.toast-body');
+        if (errorToastBody) {
+          errorToastBody.innerHTML = `
+            <div class="d-flex align-items-center">
+              <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+              <span>${errorMessage}</span>
+            </div>
+          `;
+          errorToast.show();
+        }
+      }
+    } finally {
+      // Always re-enable the button
+      if (generateMoreBtn) {
+        generateMoreBtn.disabled = false;
+        generateMoreBtn.innerHTML = originalHtml;
       }
     }
   });

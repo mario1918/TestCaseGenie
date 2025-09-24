@@ -13,38 +13,95 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-export async function generateTestCases(userStory) {
+export async function generateTestCases(data) {
   try {
+    const { 
+      prompt: userStory, 
+      existing_test_cases = [],
+      is_additional_generation = false,
+      summary = '',
+      issue_key = ''
+    } = data;
+
+    const existingTestCasesText = existing_test_cases.length > 0 ? 
+      `Existing Test Cases (${existing_test_cases.length}):
+${JSON.stringify(existing_test_cases, null, 2)}` : 
+      'No existing test cases provided.';
+
+    const additionalContext = is_additional_generation ? 
+      `IMPORTANT: You are generating ADDITIONAL test cases. Please generate NEW test cases that are different from the existing ones. ` +
+      `Focus on different test scenarios, edge cases, or alternative approaches that haven't been covered yet.` :
+      '';
+
     const prompt = `
     You are an expert Senior Software Tester and QA Test Case Generator.
-    Generate well-structured positive, negative, boundary and edge test cases in strict JSON format only.
-    Do not include any explanations or extra text.
-    Write the Steps in a numbered list format. Each step should be a single line.
-    For steps, always start with "Navigate to https://a-qa-my.siliconexpert.com/"
+    ${additionalContext}
     
-    The format must be:
+    Generate well-structured test cases in strict JSON format only. Focus on creating ${is_additional_generation ? 'new, unique test cases that cover different scenarios than the existing ones shown below' : 'comprehensive test cases'}.
+    
+    IMPORTANT FORMAT REQUIREMENTS:
+    - The response must be valid JSON only, no other text
+    - Each test case must include: title, steps, expectedResult, and priority
+    - Steps must be a single string with each step on a new line, prefixed with a number and period
+    - Always start steps with "1. Navigate to https://a-qa-my.siliconexpert.com/"
+    - Priority must be one of: Low, Medium, or High
+    
+    The required JSON format is:
     [
       {
-        "id": "number",
+        "id": 1,
         "title": "string",
         "steps": "string",
         "expectedResult": "string",
-        "priority": "Low | Medium | High",
+        "priority": "Low"
       }
     ]
     
-    User Story:
+    Issue Details:
+    - Key: ${issue_key}
+    - Summary: ${summary}
+    
+    User Story/Description:
     ${userStory}
-    `;
     
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
+    ${existing_test_cases.length > 0 ? `EXISTING TEST CASES (${existing_test_cases.length}):
+${JSON.stringify(existing_test_cases, null, 2)}
+
+Create ${is_additional_generation ? 'new, different test cases' : 'test cases'} that cover different scenarios than those listed above. ` : ''}
     
-      // ensure JSON only (remove backticks, etc.)
-      const cleaned = text.replace(/```json|```/g, "").trim();
-      return cleaned;
+    Generate ${is_additional_generation ? 'additional ' : ''}test cases that cover different scenarios${existing_test_cases.length > 0 ? ' than those shown above' : ''}.`;
+    
+    console.log('Sending prompt to Gemini API...');
+    const result = await model.generateContent(prompt);
+    
+    if (!result || !result.response) {
+      console.error('Invalid response from Gemini API:', result);
+      throw new Error('Invalid response from AI model');
+    }
+    
+    const text = result.response.text();
+    console.log('Raw response from Gemini:', text);
+    
+    // Clean up the response to ensure it's valid JSON
+    const jsonMatch = text.match(/\[.*\]/s);
+    if (!jsonMatch) {
+      console.error('No JSON array found in response. Full response:', text);
+      throw new Error('Invalid response format from AI model. Expected a JSON array of test cases.');
+    }
+    
+    try {
+      // Try to parse the JSON to validate it
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log('Successfully parsed test cases:', parsed);
+      return jsonMatch[0];
+    } catch (parseError) {
+      console.error('Error parsing JSON response:', parseError);
+      console.error('Problematic JSON:', jsonMatch[0]);
+      throw new Error(`Failed to parse AI response: ${parseError.message}`);
+    }
   } catch (err) {
     console.error("Gemini API error:", err);
     throw new Error("Failed to generate test cases with Gemini.");
   }
 }
+
